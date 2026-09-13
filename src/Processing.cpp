@@ -161,6 +161,31 @@ std::function<void()>    _onWindowMoved;
 
 namespace Processing {
 
+static FILE* processingOpenFile(const char* path, const char* mode) {
+#ifdef _WIN32
+    FILE* file = nullptr;
+    return ::fopen_s(&file, path, mode) == 0 ? file : nullptr;
+#else
+    return ::fopen(path, mode);
+#endif
+}
+
+static FILE* processingOpenPipe(const char* command, const char* mode) {
+#ifdef _WIN32
+    return ::_popen(command, mode);
+#else
+    return ::popen(command, mode);
+#endif
+}
+
+static int processingClosePipe(FILE* pipe) {
+#ifdef _WIN32
+    return ::_pclose(pipe);
+#else
+    return ::pclose(pipe);
+#endif
+}
+
 static void _doEnableDebugConsole() {
 #ifdef _WIN32
     if (AllocConsole()) {
@@ -2550,7 +2575,9 @@ PImage* PApplet::loadImage(const ::std::string& path){
     // Handle URLs: download with curl/wget and validate image magic bytes
     if (path.size()>7 && (path.substr(0,7)=="http://" || path.substr(0,8)=="https://")){
 #ifdef _WIN32
-        ::std::string tmp=::std::string(getenv("TEMP")?getenv("TEMP"):"C:\\Temp")+"\\pg_img_";
+        ::std::string tempDir = processingEnvironmentVariable("TEMP");
+        if (tempDir.empty()) tempDir = "C:\\Temp";
+        ::std::string tmp=tempDir+"\\pg_img_";
 #else
         ::std::string tmp="/tmp/pg_img_";
 #endif
@@ -2561,7 +2588,7 @@ PImage* PApplet::loadImage(const ::std::string& path){
         for(char& c:bn) if(c==':'||c=='*'||c=='<'||c=='>'||c=='|') c='_';
         tmp+=bn;
         auto isValidImg=[&]()->bool{
-            FILE* f2=fopen(tmp.c_str(),"rb"); if(!f2) return false;
+            FILE* f2=processingOpenFile(tmp.c_str(),"rb"); if(!f2) return false;
             fseek(f2,0,SEEK_END); long sz=ftell(f2); fseek(f2,0,SEEK_SET);
             unsigned char h[4]={}; fread(h,1,4,f2); fclose(f2);
             if(sz<100) return false;
@@ -2594,9 +2621,8 @@ PImage* PApplet::loadImage(const ::std::string& path){
     }
     // Search paths: current dir, data/, files/, and sketch subdirs
     // Check PROCESSING_SKETCH_PATH env var set by IDE
-    ::std::string _sketchDir;
-    if (const char* _sp = ::std::getenv("PROCESSING_SKETCH_PATH"))
-        _sketchDir = ::std::string(_sp) + "/";
+    ::std::string _sketchDir = processingEnvironmentVariable("PROCESSING_SKETCH_PATH");
+    if (!_sketchDir.empty()) _sketchDir += "/";
     // Also get the directory of the running executable
     ::std::string _exeDir;
     {
@@ -3622,13 +3648,13 @@ void PApplet::run(){
     {
         ::std::string _homeDir;
 #ifdef _WIN32
-        if (const char* h = ::std::getenv("USERPROFILE")) _homeDir = h;
+        _homeDir = processingEnvironmentVariable("USERPROFILE");
 #else
-        if (const char* h = ::std::getenv("HOME")) _homeDir = h;
+        _homeDir = processingEnvironmentVariable("HOME");
 #endif
         ::std::string _modePath;
-        if (const char* mp = ::std::getenv("PROCESSING_MODE_PATH"))
-            _modePath = ::std::string(mp) + "/";
+        _modePath = processingEnvironmentVariable("PROCESSING_MODE_PATH");
+        if (!_modePath.empty()) _modePath += "/";
 
         // Font name used by Processing4
         const ::std::string _font = "ProcessingSansPro-Regular.ttf";
@@ -3636,8 +3662,8 @@ void PApplet::run(){
         // Check Documents/Processing on Windows (user sketchbook)
         ::std::string _docsPath;
 #ifdef _WIN32
-        if (const char* ud = ::std::getenv("USERPROFILE"))
-            _docsPath = ::std::string(ud) + "/Documents/Processing/";
+        ::std::string userProfile = processingEnvironmentVariable("USERPROFILE");
+        if (!userProfile.empty()) _docsPath = userProfile + "/Documents/Processing/";
 #endif
 
         if (!tryLoadTTF("fonts/" + _font, g_textSize) &&
@@ -4479,7 +4505,7 @@ static PShape* svgLoad(const ::std::string& path){
     // Search paths
     ::std::vector<::std::string> tries={path,"data/"+path,"files/"+path};
     ::std::string found;
-    for(auto& t:tries){FILE* f=fopen(t.c_str(),"r");if(f){fclose(f);found=t;break;}}
+    for(auto& t:tries){FILE* f=processingOpenFile(t.c_str(),"r");if(f){fclose(f);found=t;break;}}
     if(found.empty()){::std::cerr<<"loadShape: file not found: "<<path<<"\n";return new PShape();}
 
     ::std::ifstream f(found);
@@ -4681,7 +4707,7 @@ static ::std::unordered_map<::std::string,GLuint> objLoadMtl(const ::std::string
 static PShape* objLoad(const ::std::string& path){
     ::std::vector<::std::string> tries={path,"data/"+path,"files/"+path};
     ::std::string found;
-    for(auto& t:tries){FILE* f2=fopen(t.c_str(),"r");if(f2){fclose(f2);found=t;break;}}
+    for(auto& t:tries){FILE* f2=processingOpenFile(t.c_str(),"r");if(f2){fclose(f2);found=t;break;}}
     if(found.empty()){::std::cerr<<"loadShape: OBJ not found: "<<path<<"\n";return new PShape();}
 
     // Get directory for relative texture paths
@@ -5007,7 +5033,7 @@ PFont* PApplet::createFont(const ::std::string& name, float size, bool /*smooth*
     // Also search system font dirs recursively (Linux: fc-list output)
     #ifndef _WIN32
     {
-        FILE* fc = popen(("fc-list : file | grep -i '" + nameNoExt + "' | head -5").c_str(), "r");
+        FILE* fc = processingOpenPipe(("fc-list : file | grep -i '" + nameNoExt + "' | head -5").c_str(), "r");
         if (fc) {
             char buf[512];
             while (fgets(buf, sizeof(buf), fc)) {
@@ -5022,7 +5048,7 @@ PFont* PApplet::createFont(const ::std::string& name, float size, bool /*smooth*
                     if (!fpath.empty()) paths.push_back(fpath);
                 }
             }
-            pclose(fc);
+            processingClosePipe(fc);
         }
     }
     #endif
@@ -5078,8 +5104,8 @@ PrintWriter* PApplet::createWriter(const ::std::string& path){ return new PrintW
     (void)prompt; return "";
 #endif
     ::std::string cmd="zenity --file-selection --title=\""+prompt+"\" 2>/dev/null";
-    FILE* p=popen(cmd.c_str(),"r"); if(!p)return "";
-    char buf[4096]=""; fgets(buf,sizeof(buf),p); pclose(p);
+    FILE* p=processingOpenPipe(cmd.c_str(),"r"); if(!p)return "";
+    char buf[4096]=""; fgets(buf,sizeof(buf),p); processingClosePipe(p);
     ::std::string r(buf); if(!r.empty()&&r.back()=='\n')r.pop_back(); return r;
 }
 ::std::string PApplet::selectOutput(const ::std::string& prompt,const ::std::string&){
@@ -5087,8 +5113,8 @@ PrintWriter* PApplet::createWriter(const ::std::string& path){ return new PrintW
     (void)prompt; return "";
 #endif
     ::std::string cmd="zenity --file-selection --save --title=\""+prompt+"\" 2>/dev/null";
-    FILE* p=popen(cmd.c_str(),"r"); if(!p)return "";
-    char buf[4096]=""; fgets(buf,sizeof(buf),p); pclose(p);
+    FILE* p=processingOpenPipe(cmd.c_str(),"r"); if(!p)return "";
+    char buf[4096]=""; fgets(buf,sizeof(buf),p); processingClosePipe(p);
     ::std::string r(buf); if(!r.empty()&&r.back()=='\n')r.pop_back(); return r;
 }
 ::std::string PApplet::selectFolder(const ::std::string& prompt){
@@ -5096,8 +5122,8 @@ PrintWriter* PApplet::createWriter(const ::std::string& path){ return new PrintW
     (void)prompt; return "";
 #endif
     ::std::string cmd="zenity --file-selection --directory --title=\""+prompt+"\" 2>/dev/null";
-    FILE* p=popen(cmd.c_str(),"r"); if(!p)return "";
-    char buf[4096]=""; fgets(buf,sizeof(buf),p); pclose(p);
+    FILE* p=processingOpenPipe(cmd.c_str(),"r"); if(!p)return "";
+    char buf[4096]=""; fgets(buf,sizeof(buf),p); processingClosePipe(p);
     ::std::string r(buf); if(!r.empty()&&r.back()=='\n')r.pop_back(); return r;
 }
 
@@ -5111,9 +5137,8 @@ PImage* PApplet::requestImage(const ::std::string& path){
     ::std::thread([img, path]{
         // Resolve search paths same as loadImage
         // Check PROCESSING_SKETCH_PATH env var set by IDE
-    ::std::string _sketchDir;
-    if (const char* _sp = ::std::getenv("PROCESSING_SKETCH_PATH"))
-        _sketchDir = ::std::string(_sp) + "/";
+    ::std::string _sketchDir = processingEnvironmentVariable("PROCESSING_SKETCH_PATH");
+    if (!_sketchDir.empty()) _sketchDir += "/";
     // Also get the directory of the running executable
     ::std::string _exeDir;
     {
@@ -5139,7 +5164,7 @@ PImage* PApplet::requestImage(const ::std::string& path){
         };
         ::std::string found;
         for (auto& t : tries) {
-            FILE* f = fopen(t.c_str(), "rb");
+            FILE* f = processingOpenFile(t.c_str(), "rb");
             if (f) { fclose(f); found = t; break; }
         }
         if (found.empty()) {
@@ -5248,8 +5273,8 @@ PImage getRegion(int x,int y,int w,int h){
 
 ::std::vector<::std::string> PApplet::loadStrings(const ::std::string& path) {
     ::std::vector<::std::string> lines;
-    ::std::string sketchDir;
-    if (const char* sp = ::std::getenv("PROCESSING_SKETCH_PATH")) sketchDir = ::std::string(sp) + "/";
+    ::std::string sketchDir = processingEnvironmentVariable("PROCESSING_SKETCH_PATH");
+    if (!sketchDir.empty()) sketchDir += "/";
     ::std::ifstream f(path);
     if (!f) f.open(sketchDir + path);
     if (!f) f.open(sketchDir + "data/" + path);

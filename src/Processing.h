@@ -120,6 +120,7 @@
 #include <iomanip>
 #include <unordered_map>
 #include <unordered_set>
+#include <ctime>
 // ---------------------------------------------------------------------------
 // OpenGL / GLFW
 // ---------------------------------------------------------------------------
@@ -766,20 +767,10 @@ public:
     virtual ~PImage() { if (texID) glDeleteTextures(1, &texID); }
 
     // Non-copyable (owns GPU resource -- use PImage* for assignment)
-    PImage(const PImage&) __attribute__((error(
-        "E0002: PImage value-style copying is not supported. "
-        "Declare PImage* instead of PImage. "
-        "See " PROCESSING_WEBSITE_URL "/error/E0002.html"
-    )));
+    PImage(const PImage&) = delete;
     // Prevent PImage img = loadImage(...) -- must use PImage*
-    PImage(PImage*) __attribute__((error(
-        "E0002: Use PImage* not PImage. Write: PImage* img = loadImage(...);"
-    )));
-    PImage& operator=(const PImage&) __attribute__((error(
-        "E0002: PImage value-style assignment is not supported. "
-        "Declare PImage* instead of PImage. "
-        "See " PROCESSING_WEBSITE_URL "/error/E0002.html"
-    )));
+    PImage(PImage*) = delete;
+    PImage& operator=(const PImage&) = delete;
 
     // Movable
     PImage(PImage&& o) noexcept
@@ -1045,16 +1036,8 @@ public:
         if (rbo) glDeleteRenderbuffers(1, &rbo);
     }
 
-    PGraphics(const PGraphics&) __attribute__((error(
-        "E0001: PGraphics value-style copying is not supported. "
-        "Declare PGraphics* instead of PGraphics. "
-        "See " PROCESSING_WEBSITE_URL "/error/E0001.html"
-    )));
-    PGraphics& operator=(const PGraphics&) __attribute__((error(
-        "E0001: PGraphics value-style assignment is not supported. "
-        "Declare PGraphics* instead of PGraphics. "
-        "See " PROCESSING_WEBSITE_URL "/error/E0001.html"
-    )));
+    PGraphics(const PGraphics&) = delete;
+    PGraphics& operator=(const PGraphics&) = delete;
     // Allow assignment from pointer (PGraphics pg; pg = createGraphics(w,h))
     // [E0001] REMOVED: the legacy "PGraphics pg; pg = createGraphics(...);"
     // value-style assignment is no longer supported. PGraphics owns
@@ -1074,11 +1057,7 @@ public:
     // declaration that would behave incorrectly or unsafely. The actual
     // URL in the error message below comes from PROCESSING_WEBSITE_URL
     // (ultimately config/cppmode.properties), never hardcoded here.
-    PGraphics& operator=(PGraphics* p) __attribute__((error(
-        "E0001: PGraphics value-style assignment is not supported. "
-        "Declare PGraphics* instead of PGraphics. "
-        "See " PROCESSING_WEBSITE_URL "/error/E0001"
-    )));
+    PGraphics& operator=(PGraphics* p) = delete;
 };
 
 // =============================================================================
@@ -1414,9 +1393,25 @@ inline unsigned long millis() {
     return static_cast<unsigned long>(duration_cast<milliseconds>(steady_clock::now()-start).count());
 }
 // sketchPath/dataPath -- returns path relative to sketch folder
+inline ::std::string processingEnvironmentVariable(const char* name) {
+#ifdef _WIN32
+    char* value = nullptr;
+    size_t length = 0;
+    if (::_dupenv_s(&value, &length, name) != 0 || value == nullptr) {
+        return {};
+    }
+    ::std::string result(value);
+    ::std::free(value);
+    return result;
+#else
+    const char* value = ::std::getenv(name);
+    return value ? value : ::std::string{};
+#endif
+}
+
 inline ::std::string sketchPath(const ::std::string& where="") {
-    const char* p = ::std::getenv("PROCESSING_SKETCH_PATH");
-    ::std::string base = p ? p : ".";
+    ::std::string base = processingEnvironmentVariable("PROCESSING_SKETCH_PATH");
+    if (base.empty()) base = ".";
     return where.empty() ? base : base + "/" + where;
 }
 inline ::std::string dataPath(const ::std::string& where="") {
@@ -1425,12 +1420,22 @@ inline ::std::string dataPath(const ::std::string& where="") {
 inline ::std::string sketchFile(const ::std::string& where) { return sketchPath(where); }
 inline ::std::string dataFile(const ::std::string& where)   { return dataPath(where); }
 
-inline int second() { ::std::time_t t=::std::time(nullptr); return ::std::localtime(&t)->tm_sec;      }
-inline int minute() { ::std::time_t t=::std::time(nullptr); return ::std::localtime(&t)->tm_min;      }
-inline int hour()   { ::std::time_t t=::std::time(nullptr); return ::std::localtime(&t)->tm_hour;     }
-inline int day()    { ::std::time_t t=::std::time(nullptr); return ::std::localtime(&t)->tm_mday;     }
-inline int month()  { ::std::time_t t=::std::time(nullptr); return ::std::localtime(&t)->tm_mon+1;    }
-inline int year()   { ::std::time_t t=::std::time(nullptr); return ::std::localtime(&t)->tm_year+1900;}
+inline ::std::tm processingLocalTime(::std::time_t t) {
+    ::std::tm result{};
+#ifdef _WIN32
+    ::localtime_s(&result, &t);
+#else
+    ::localtime_r(&t, &result);
+#endif
+    return result;
+}
+
+inline int second() { return processingLocalTime(::std::time(nullptr)).tm_sec;      }
+inline int minute() { return processingLocalTime(::std::time(nullptr)).tm_min;      }
+inline int hour()   { return processingLocalTime(::std::time(nullptr)).tm_hour;     }
+inline int day()    { return processingLocalTime(::std::time(nullptr)).tm_mday;     }
+inline int month()  { return processingLocalTime(::std::time(nullptr)).tm_mon+1;    }
+inline int year()   { return processingLocalTime(::std::time(nullptr)).tm_year+1900;}
 
 // 'color' is a packed 32-bit ARGB integer, just like in Processing Java.
 // Constructors respect the current colorMode setting (see colorMode()).
@@ -1866,6 +1871,45 @@ namespace _api {
     void tint(float,float,float,float);
     void strokeWeight(float);
     void rotate(float);
+    void rotateX(float);
+    void rotateY(float);
+    void rotateZ(float);
+    void scale(float);
+    void pushMatrix();
+    void popMatrix();
+    void push();
+    void pop();
+    void pushStyle();
+    void popStyle();
+    void resetMatrix();
+    void beginShape(int=-1);
+    void endShape(int=0);
+    void noFill();
+    void noStroke();
+    void smooth();
+    void noSmooth();
+    void noLoop();
+    void loop();
+    void redraw();
+    void filter(int);
+    void blendMode(int);
+    void rectMode(int);
+    void ellipseMode(int);
+    void imageMode(int);
+    void colorMode(int,float=255.f);
+    void lights();
+    void noLights();
+    void box(float);
+    void box(float,float,float);
+    void sphere(float);
+    void camera();
+    void noTint();
+    void clear();
+    float random(float);
+    float random(float,float);
+    float noise(float);
+    float noise(float,float);
+    float noise(float,float,float);
 }
 
 // int overloads
@@ -3515,7 +3559,8 @@ struct PFont {
         #elif defined(__APPLE__)
         dirs.push_back("/Library/Fonts"); dirs.push_back("/System/Library/Fonts");
         #endif
-        if(getenv("HOME")){ dirs.push_back(::std::string(getenv("HOME"))+"/.fonts"); }
+        ::std::string home = processingEnvironmentVariable("HOME");
+        if(!home.empty()){ dirs.push_back(home+"/.fonts"); }
         ::std::function<void(const ::std::string&)> scan=[&](const ::std::string& dir){
             #ifndef _WIN32
             DIR* d=opendir(dir.c_str()); if(!d) return;
@@ -3644,16 +3689,8 @@ public:
     void set(const ::std::string& n, double x, double y, double z, double w){ set(n,(float)x,(float)y,(float)z,(float)w); }
 
     ~PShader() { if(program)glDeleteProgram(program); if(vert)glDeleteShader(vert); if(frag)glDeleteShader(frag); }
-    PShader(const PShader&) __attribute__((error(
-        "E0003: PShader value-style copying is not supported. "
-        "Declare PShader* instead of PShader. "
-        "See " PROCESSING_WEBSITE_URL "/error/E0003.html"
-    )));
-    PShader& operator=(const PShader&) __attribute__((error(
-        "E0003: PShader value-style assignment is not supported. "
-        "Declare PShader* instead of PShader. "
-        "See " PROCESSING_WEBSITE_URL "/error/E0003.html"
-    )));
+    PShader(const PShader&) = delete;
+    PShader& operator=(const PShader&) = delete;
     PShader(PShader&& o) noexcept
         : program(o.program),vert(o.vert),frag(o.frag),
           vertSrc(o.vertSrc),fragSrc(o.fragSrc),linked(o.linked)
@@ -4332,12 +4369,12 @@ struct PApplet {
         return (unsigned long)::std::chrono::duration_cast<::std::chrono::milliseconds>(
             ::std::chrono::steady_clock::now() - _start).count();
     }
-    static int  second() { ::std::time_t t=::std::time(nullptr); return ::std::localtime(&t)->tm_sec;      }
-    static int  minute() { ::std::time_t t=::std::time(nullptr); return ::std::localtime(&t)->tm_min;      }
-    static int  hour()   { ::std::time_t t=::std::time(nullptr); return ::std::localtime(&t)->tm_hour;     }
-    static int  day()    { ::std::time_t t=::std::time(nullptr); return ::std::localtime(&t)->tm_mday;     }
-    static int  month()  { ::std::time_t t=::std::time(nullptr); return ::std::localtime(&t)->tm_mon+1;    }
-    static int  year()   { ::std::time_t t=::std::time(nullptr); return ::std::localtime(&t)->tm_year+1900;}
+    static int  second() { return processingLocalTime(::std::time(nullptr)).tm_sec;      }
+    static int  minute() { return processingLocalTime(::std::time(nullptr)).tm_min;      }
+    static int  hour()   { return processingLocalTime(::std::time(nullptr)).tm_hour;     }
+    static int  day()    { return processingLocalTime(::std::time(nullptr)).tm_mday;     }
+    static int  month()  { return processingLocalTime(::std::time(nullptr)).tm_mon+1;    }
+    static int  year()   { return processingLocalTime(::std::time(nullptr)).tm_year+1900;}
     static void delay(int ms) { ::std::this_thread::sleep_for(::std::chrono::milliseconds(ms)); }
     void thread(::std::function<void()> fn) { ::std::thread(fn).detach(); }
 
