@@ -1,12 +1,23 @@
 #if __has_include("stb_truetype.h")
 #  define PROCESSING_HAS_STB_TRUETYPE 1
 #  define STB_TRUETYPE_IMPLEMENTATION
+#  if defined(_MSC_VER)
+#    pragma warning(push)
+#    pragma warning(disable: 4365)
+#  endif
 #  include "stb_truetype.h"
+#  if defined(_MSC_VER)
+#    pragma warning(pop)
+#  endif
 #else
 #  define PROCESSING_HAS_STB_TRUETYPE 0
 #endif
 
 #include "Processing.h"
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable: 4365 4245 4100 4189)
+#endif
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #include <emscripten/html5.h>
@@ -16,6 +27,7 @@
 #undef GL_QUAD_STRIP
 #define GL_QUAD_STRIP GL_TRIANGLE_STRIP
 #endif
+
 #include <csignal>
 #include <cstdlib>
 #include <cmath>
@@ -30,9 +42,11 @@
 #include <objc/message.h>
 #include <dlfcn.h>
 #endif
+
 #ifndef _WIN32
 #include <thread>
 #endif
+
 #include <vector>
 #include <array>
 #include <string>
@@ -52,13 +66,26 @@
 // Uncomment + drop stb_image_write.h to enable saveFrame()/save():
 // #define STB_IMAGE_WRITE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION
+#if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable: 4365)
+#endif
 #include "stb_image_write.h"
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
+#if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
 #pragma GCC diagnostic pop
+#endif
 
 // ── Manual glu replacements (no GLU header needed) ───────────────────────────
 static void _gluPerspective(double fovY_deg, double aspect, double zNear, double zFar) {
@@ -337,8 +364,8 @@ color PApplet::makeColor(float gray,float alpha){
         float br=gray/colorMaxB;
         br=::std::fmax(0.f,::std::fmin(1.f,br));
         int v=(int)(br*255);
-        unsigned int a=::std::fmax(0.f,::std::fmin(1.f,alpha/colorMaxA))*255;
-        return colorVal(v,v,v,(int)a);
+        unsigned int a=static_cast<unsigned int>(::std::fmax(0.f,::std::fmin(1.f,alpha/colorMaxA))*255.0f);
+        return colorVal(v,v,v,static_cast<int>(a));
     }
     return makeColor(gray,gray,gray,alpha);
 }
@@ -2296,7 +2323,7 @@ void PApplet::drawBitmapStr(float x, float y, const ::std::string& s, int scale)
 }
 
 float PApplet::bitmapStrWidth(const ::std::string& s, int scale) {
-    return s.size() * (BF_GW+1) * scale;
+    return static_cast<float>(s.size()) * static_cast<float>(BF_GW+1) * static_cast<float>(scale);
 }
 
 // -- TTF rendering -------------------------------------------------------------
@@ -2401,7 +2428,7 @@ void PApplet::renderText(const ::std::string& msg, float x, float y) {
         // Bitmap fallback
         int sc = ::std::max(1,(int)(g_textSize/8.0f));
         // Shift so baseline sits at y (bitmap font: ascent = BF_GH-2 rows)
-        float ascent = (BF_GH - 2) * sc;
+        float ascent = static_cast<float>(BF_GH - 2) * static_cast<float>(sc);
         drawBitmapStr(dx, dy - ascent, ls[li], sc);
     }
 }
@@ -2540,7 +2567,7 @@ float PApplet::textAscent() {
     }
 #endif
     int sc = ::std::max(1,(int)(g_textSize/8.0f));
-    return (BF_GH - 2) * sc;
+    return static_cast<float>(BF_GH - 2) * static_cast<float>(sc);
 }
 
 float PApplet::textDescent() {
@@ -2860,13 +2887,13 @@ void PApplet::filter(int mode, float param) {
             int r=buf[i*4],g=buf[i*4+1],b=buf[i*4+2];
             int grey=(r+g+b)/3;
             if      (mode==GRAY)      { buf[i*4]=buf[i*4+1]=buf[i*4+2]=(unsigned char)grey; }
-            else if (mode==INVERT)    { buf[i*4]=255-r; buf[i*4+1]=255-g; buf[i*4+2]=255-b; }
+            else if (mode==INVERT)    { buf[i*4]=static_cast<unsigned char>(255-r); buf[i*4+1]=static_cast<unsigned char>(255-g); buf[i*4+2]=static_cast<unsigned char>(255-b); }
             else if (mode==THRESHOLD) { unsigned char t=(grey>param*255)?255:0; buf[i*4]=buf[i*4+1]=buf[i*4+2]=t; }
-            else if (mode==OPAQUE)    { buf[i*4+3]=255; }
+            else if (mode==OPAQUE)    { buf[i*4+3]=static_cast<unsigned char>(255); }
             else if (mode==POSTERIZE) {
                 int levels = ::std::max(2,(int)param);
                 auto post = [levels](int v){ return (int)((int)(v*(levels-1)/255.0f+0.5f)*255/(levels-1)); };
-                buf[i*4]=post(r); buf[i*4+1]=post(g); buf[i*4+2]=post(b);
+             buf[static_cast<size_t>(i)*4u]=static_cast<unsigned char>(post(r)); buf[static_cast<size_t>(i)*4u+1u]=static_cast<unsigned char>(post(g)); buf[static_cast<size_t>(i)*4u+2u]=static_cast<unsigned char>(post(b));
             }
         }
     } else if (mode == BLUR) {
@@ -2881,7 +2908,7 @@ void PApplet::filter(int mode, float param) {
                 sr+=tmp[j]; sg+=tmp[j+1]; sb+=tmp[j+2]; sa+=tmp[j+3]; cnt++;
             }
             int i=(y*w+x2)*4;
-            buf[i]=sr/cnt; buf[i+1]=sg/cnt; buf[i+2]=sb/cnt; buf[i+3]=sa/cnt;
+            buf[i]=static_cast<unsigned char>(sr/cnt); buf[i+1]=static_cast<unsigned char>(sg/cnt); buf[i+2]=static_cast<unsigned char>(sb/cnt); buf[i+3]=static_cast<unsigned char>(sa/cnt);
         }
     } else if (mode == ERODE || mode == DILATE) {
         ::std::vector<unsigned char> tmp(buf);
@@ -3076,7 +3103,7 @@ void PApplet::saveFrame(const ::std::string& filename) {
         for (int x = 0; x < w * 3; x++)
             ::std::swap(px[y*w*3+x], px[(h-1-y)*w*3+x]);
     ::std::string ext = fn.size() > 4 ? fn.substr(fn.size()-4) : "";
-    for (auto& c : ext) c = tolower(c);
+    for (auto& c : ext) c = static_cast<char>(tolower(static_cast<unsigned char>(c)));
     int ok = 0;
     if (ext == ".png")                ok = stbi_write_png(fn.c_str(), w, h, 3, px.data(), w*3);
     else if (ext == ".jpg" || ext == "jpeg") ok = stbi_write_jpg(fn.c_str(), w, h, 3, px.data(), 95);
@@ -5345,4 +5372,8 @@ bool PApplet::saveBytes(const ::std::string& path, const ::std::vector<unsigned 
 }
 
 } // namespace Processing
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 
