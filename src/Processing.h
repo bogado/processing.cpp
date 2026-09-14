@@ -111,7 +111,6 @@
 #include <string>
 #include <vector>
 #include <thread>
-#include <functional>
 #include <algorithm>
 #include <memory>
 #include <map>
@@ -126,12 +125,10 @@
 #include <variant>
 #include <numeric>
 #include <iterator>
-#include <memory>
-#include <regex>
 #include <iomanip>
 #include <unordered_map>
 #include <unordered_set>
-#include <ctime>
+#include <array>
 // ---------------------------------------------------------------------------
 // OpenGL / GLFW
 // ---------------------------------------------------------------------------
