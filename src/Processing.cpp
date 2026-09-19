@@ -1,12 +1,23 @@
 #if __has_include("stb_truetype.h")
 #  define PROCESSING_HAS_STB_TRUETYPE 1
 #  define STB_TRUETYPE_IMPLEMENTATION
+#  if defined(_MSC_VER)
+#    pragma warning(push)
+#    pragma warning(disable: 4365)
+#  endif
 #  include "stb_truetype.h"
+#  if defined(_MSC_VER)
+#    pragma warning(pop)
+#  endif
 #else
 #  define PROCESSING_HAS_STB_TRUETYPE 0
 #endif
 
 #include "Processing.h"
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable: 4365 4245 4100 4189)
+#endif
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #include <emscripten/html5.h>
@@ -16,6 +27,7 @@
 #undef GL_QUAD_STRIP
 #define GL_QUAD_STRIP GL_TRIANGLE_STRIP
 #endif
+
 #include <csignal>
 #include <cstdlib>
 #include <cmath>
@@ -30,9 +42,11 @@
 #include <objc/message.h>
 #include <dlfcn.h>
 #endif
+
 #ifndef _WIN32
 #include <thread>
 #endif
+
 #include <vector>
 #include <array>
 #include <string>
@@ -52,13 +66,26 @@
 // Uncomment + drop stb_image_write.h to enable saveFrame()/save():
 // #define STB_IMAGE_WRITE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION
+#if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable: 4365)
+#endif
 #include "stb_image_write.h"
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
+#if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
 #pragma GCC diagnostic pop
+#endif
 
 // ── Manual glu replacements (no GLU header needed) ───────────────────────────
 static void _gluPerspective(double fovY_deg, double aspect, double zNear, double zFar) {
@@ -160,6 +187,31 @@ std::function<void()>    _onWindowMoved;
 
 
 namespace Processing {
+
+static FILE* processingOpenFile(const char* path, const char* mode) {
+#ifdef _WIN32
+    FILE* file = nullptr;
+    return ::fopen_s(&file, path, mode) == 0 ? file : nullptr;
+#else
+    return ::fopen(path, mode);
+#endif
+}
+
+static FILE* processingOpenPipe(const char* command, const char* mode) {
+#ifdef _WIN32
+    return ::_popen(command, mode);
+#else
+    return ::popen(command, mode);
+#endif
+}
+
+static int processingClosePipe(FILE* pipe) {
+#ifdef _WIN32
+    return ::_pclose(pipe);
+#else
+    return ::pclose(pipe);
+#endif
+}
 
 static void _doEnableDebugConsole() {
 #ifdef _WIN32
@@ -312,8 +364,8 @@ color PApplet::makeColor(float gray,float alpha){
         float br=gray/colorMaxB;
         br=::std::fmax(0.f,::std::fmin(1.f,br));
         int v=(int)(br*255);
-        unsigned int a=::std::fmax(0.f,::std::fmin(1.f,alpha/colorMaxA))*255;
-        return colorVal(v,v,v,(int)a);
+        unsigned int a=static_cast<unsigned int>(::std::fmax(0.f,::std::fmin(1.f,alpha/colorMaxA))*255.0f);
+        return colorVal(v,v,v,static_cast<int>(a));
     }
     return makeColor(gray,gray,gray,alpha);
 }
@@ -2271,7 +2323,7 @@ void PApplet::drawBitmapStr(float x, float y, const ::std::string& s, int scale)
 }
 
 float PApplet::bitmapStrWidth(const ::std::string& s, int scale) {
-    return s.size() * (BF_GW+1) * scale;
+    return static_cast<float>(s.size()) * static_cast<float>(BF_GW+1) * static_cast<float>(scale);
 }
 
 // -- TTF rendering -------------------------------------------------------------
@@ -2376,7 +2428,7 @@ void PApplet::renderText(const ::std::string& msg, float x, float y) {
         // Bitmap fallback
         int sc = ::std::max(1,(int)(g_textSize/8.0f));
         // Shift so baseline sits at y (bitmap font: ascent = BF_GH-2 rows)
-        float ascent = (BF_GH - 2) * sc;
+        float ascent = static_cast<float>(BF_GH - 2) * static_cast<float>(sc);
         drawBitmapStr(dx, dy - ascent, ls[li], sc);
     }
 }
@@ -2515,7 +2567,7 @@ float PApplet::textAscent() {
     }
 #endif
     int sc = ::std::max(1,(int)(g_textSize/8.0f));
-    return (BF_GH - 2) * sc;
+    return static_cast<float>(BF_GH - 2) * static_cast<float>(sc);
 }
 
 float PApplet::textDescent() {
@@ -2550,7 +2602,9 @@ PImage* PApplet::loadImage(const ::std::string& path){
     // Handle URLs: download with curl/wget and validate image magic bytes
     if (path.size()>7 && (path.substr(0,7)=="http://" || path.substr(0,8)=="https://")){
 #ifdef _WIN32
-        ::std::string tmp=::std::string(getenv("TEMP")?getenv("TEMP"):"C:\\Temp")+"\\pg_img_";
+        ::std::string tempDir = processingEnvironmentVariable("TEMP");
+        if (tempDir.empty()) tempDir = "C:\\Temp";
+        ::std::string tmp=tempDir+"\\pg_img_";
 #else
         ::std::string tmp="/tmp/pg_img_";
 #endif
@@ -2561,7 +2615,7 @@ PImage* PApplet::loadImage(const ::std::string& path){
         for(char& c:bn) if(c==':'||c=='*'||c=='<'||c=='>'||c=='|') c='_';
         tmp+=bn;
         auto isValidImg=[&]()->bool{
-            FILE* f2=fopen(tmp.c_str(),"rb"); if(!f2) return false;
+            FILE* f2=processingOpenFile(tmp.c_str(),"rb"); if(!f2) return false;
             fseek(f2,0,SEEK_END); long sz=ftell(f2); fseek(f2,0,SEEK_SET);
             unsigned char h[4]={}; fread(h,1,4,f2); fclose(f2);
             if(sz<100) return false;
@@ -2594,9 +2648,8 @@ PImage* PApplet::loadImage(const ::std::string& path){
     }
     // Search paths: current dir, data/, files/, and sketch subdirs
     // Check PROCESSING_SKETCH_PATH env var set by IDE
-    ::std::string _sketchDir;
-    if (const char* _sp = ::std::getenv("PROCESSING_SKETCH_PATH"))
-        _sketchDir = ::std::string(_sp) + "/";
+    ::std::string _sketchDir = processingEnvironmentVariable("PROCESSING_SKETCH_PATH");
+    if (!_sketchDir.empty()) _sketchDir += "/";
     // Also get the directory of the running executable
     ::std::string _exeDir;
     {
@@ -2834,13 +2887,13 @@ void PApplet::filter(int mode, float param) {
             int r=buf[i*4],g=buf[i*4+1],b=buf[i*4+2];
             int grey=(r+g+b)/3;
             if      (mode==GRAY)      { buf[i*4]=buf[i*4+1]=buf[i*4+2]=(unsigned char)grey; }
-            else if (mode==INVERT)    { buf[i*4]=255-r; buf[i*4+1]=255-g; buf[i*4+2]=255-b; }
+            else if (mode==INVERT)    { buf[i*4]=static_cast<unsigned char>(255-r); buf[i*4+1]=static_cast<unsigned char>(255-g); buf[i*4+2]=static_cast<unsigned char>(255-b); }
             else if (mode==THRESHOLD) { unsigned char t=(grey>param*255)?255:0; buf[i*4]=buf[i*4+1]=buf[i*4+2]=t; }
-            else if (mode==OPAQUE)    { buf[i*4+3]=255; }
+            else if (mode==OPAQUE)    { buf[i*4+3]=static_cast<unsigned char>(255); }
             else if (mode==POSTERIZE) {
                 int levels = ::std::max(2,(int)param);
                 auto post = [levels](int v){ return (int)((int)(v*(levels-1)/255.0f+0.5f)*255/(levels-1)); };
-                buf[i*4]=post(r); buf[i*4+1]=post(g); buf[i*4+2]=post(b);
+             buf[static_cast<size_t>(i)*4u]=static_cast<unsigned char>(post(r)); buf[static_cast<size_t>(i)*4u+1u]=static_cast<unsigned char>(post(g)); buf[static_cast<size_t>(i)*4u+2u]=static_cast<unsigned char>(post(b));
             }
         }
     } else if (mode == BLUR) {
@@ -2855,7 +2908,7 @@ void PApplet::filter(int mode, float param) {
                 sr+=tmp[j]; sg+=tmp[j+1]; sb+=tmp[j+2]; sa+=tmp[j+3]; cnt++;
             }
             int i=(y*w+x2)*4;
-            buf[i]=sr/cnt; buf[i+1]=sg/cnt; buf[i+2]=sb/cnt; buf[i+3]=sa/cnt;
+            buf[i]=static_cast<unsigned char>(sr/cnt); buf[i+1]=static_cast<unsigned char>(sg/cnt); buf[i+2]=static_cast<unsigned char>(sb/cnt); buf[i+3]=static_cast<unsigned char>(sa/cnt);
         }
     } else if (mode == ERODE || mode == DILATE) {
         ::std::vector<unsigned char> tmp(buf);
@@ -3050,7 +3103,7 @@ void PApplet::saveFrame(const ::std::string& filename) {
         for (int x = 0; x < w * 3; x++)
             ::std::swap(px[y*w*3+x], px[(h-1-y)*w*3+x]);
     ::std::string ext = fn.size() > 4 ? fn.substr(fn.size()-4) : "";
-    for (auto& c : ext) c = tolower(c);
+    for (auto& c : ext) c = static_cast<char>(tolower(static_cast<unsigned char>(c)));
     int ok = 0;
     if (ext == ".png")                ok = stbi_write_png(fn.c_str(), w, h, 3, px.data(), w*3);
     else if (ext == ".jpg" || ext == "jpeg") ok = stbi_write_jpg(fn.c_str(), w, h, 3, px.data(), 95);
@@ -3622,13 +3675,13 @@ void PApplet::run(){
     {
         ::std::string _homeDir;
 #ifdef _WIN32
-        if (const char* h = ::std::getenv("USERPROFILE")) _homeDir = h;
+        _homeDir = processingEnvironmentVariable("USERPROFILE");
 #else
-        if (const char* h = ::std::getenv("HOME")) _homeDir = h;
+        _homeDir = processingEnvironmentVariable("HOME");
 #endif
         ::std::string _modePath;
-        if (const char* mp = ::std::getenv("PROCESSING_MODE_PATH"))
-            _modePath = ::std::string(mp) + "/";
+        _modePath = processingEnvironmentVariable("PROCESSING_MODE_PATH");
+        if (!_modePath.empty()) _modePath += "/";
 
         // Font name used by Processing4
         const ::std::string _font = "ProcessingSansPro-Regular.ttf";
@@ -3636,8 +3689,8 @@ void PApplet::run(){
         // Check Documents/Processing on Windows (user sketchbook)
         ::std::string _docsPath;
 #ifdef _WIN32
-        if (const char* ud = ::std::getenv("USERPROFILE"))
-            _docsPath = ::std::string(ud) + "/Documents/Processing/";
+        ::std::string userProfile = processingEnvironmentVariable("USERPROFILE");
+        if (!userProfile.empty()) _docsPath = userProfile + "/Documents/Processing/";
 #endif
 
         if (!tryLoadTTF("fonts/" + _font, g_textSize) &&
@@ -4479,7 +4532,7 @@ static PShape* svgLoad(const ::std::string& path){
     // Search paths
     ::std::vector<::std::string> tries={path,"data/"+path,"files/"+path};
     ::std::string found;
-    for(auto& t:tries){FILE* f=fopen(t.c_str(),"r");if(f){fclose(f);found=t;break;}}
+    for(auto& t:tries){FILE* f=processingOpenFile(t.c_str(),"r");if(f){fclose(f);found=t;break;}}
     if(found.empty()){::std::cerr<<"loadShape: file not found: "<<path<<"\n";return new PShape();}
 
     ::std::ifstream f(found);
@@ -4681,7 +4734,7 @@ static ::std::unordered_map<::std::string,GLuint> objLoadMtl(const ::std::string
 static PShape* objLoad(const ::std::string& path){
     ::std::vector<::std::string> tries={path,"data/"+path,"files/"+path};
     ::std::string found;
-    for(auto& t:tries){FILE* f2=fopen(t.c_str(),"r");if(f2){fclose(f2);found=t;break;}}
+    for(auto& t:tries){FILE* f2=processingOpenFile(t.c_str(),"r");if(f2){fclose(f2);found=t;break;}}
     if(found.empty()){::std::cerr<<"loadShape: OBJ not found: "<<path<<"\n";return new PShape();}
 
     // Get directory for relative texture paths
@@ -5007,7 +5060,7 @@ PFont* PApplet::createFont(const ::std::string& name, float size, bool /*smooth*
     // Also search system font dirs recursively (Linux: fc-list output)
     #ifndef _WIN32
     {
-        FILE* fc = popen(("fc-list : file | grep -i '" + nameNoExt + "' | head -5").c_str(), "r");
+        FILE* fc = processingOpenPipe(("fc-list : file | grep -i '" + nameNoExt + "' | head -5").c_str(), "r");
         if (fc) {
             char buf[512];
             while (fgets(buf, sizeof(buf), fc)) {
@@ -5022,7 +5075,7 @@ PFont* PApplet::createFont(const ::std::string& name, float size, bool /*smooth*
                     if (!fpath.empty()) paths.push_back(fpath);
                 }
             }
-            pclose(fc);
+            processingClosePipe(fc);
         }
     }
     #endif
@@ -5078,8 +5131,8 @@ PrintWriter* PApplet::createWriter(const ::std::string& path){ return new PrintW
     (void)prompt; return "";
 #endif
     ::std::string cmd="zenity --file-selection --title=\""+prompt+"\" 2>/dev/null";
-    FILE* p=popen(cmd.c_str(),"r"); if(!p)return "";
-    char buf[4096]=""; fgets(buf,sizeof(buf),p); pclose(p);
+    FILE* p=processingOpenPipe(cmd.c_str(),"r"); if(!p)return "";
+    char buf[4096]=""; fgets(buf,sizeof(buf),p); processingClosePipe(p);
     ::std::string r(buf); if(!r.empty()&&r.back()=='\n')r.pop_back(); return r;
 }
 ::std::string PApplet::selectOutput(const ::std::string& prompt,const ::std::string&){
@@ -5087,8 +5140,8 @@ PrintWriter* PApplet::createWriter(const ::std::string& path){ return new PrintW
     (void)prompt; return "";
 #endif
     ::std::string cmd="zenity --file-selection --save --title=\""+prompt+"\" 2>/dev/null";
-    FILE* p=popen(cmd.c_str(),"r"); if(!p)return "";
-    char buf[4096]=""; fgets(buf,sizeof(buf),p); pclose(p);
+    FILE* p=processingOpenPipe(cmd.c_str(),"r"); if(!p)return "";
+    char buf[4096]=""; fgets(buf,sizeof(buf),p); processingClosePipe(p);
     ::std::string r(buf); if(!r.empty()&&r.back()=='\n')r.pop_back(); return r;
 }
 ::std::string PApplet::selectFolder(const ::std::string& prompt){
@@ -5096,8 +5149,8 @@ PrintWriter* PApplet::createWriter(const ::std::string& path){ return new PrintW
     (void)prompt; return "";
 #endif
     ::std::string cmd="zenity --file-selection --directory --title=\""+prompt+"\" 2>/dev/null";
-    FILE* p=popen(cmd.c_str(),"r"); if(!p)return "";
-    char buf[4096]=""; fgets(buf,sizeof(buf),p); pclose(p);
+    FILE* p=processingOpenPipe(cmd.c_str(),"r"); if(!p)return "";
+    char buf[4096]=""; fgets(buf,sizeof(buf),p); processingClosePipe(p);
     ::std::string r(buf); if(!r.empty()&&r.back()=='\n')r.pop_back(); return r;
 }
 
@@ -5111,9 +5164,8 @@ PImage* PApplet::requestImage(const ::std::string& path){
     ::std::thread([img, path]{
         // Resolve search paths same as loadImage
         // Check PROCESSING_SKETCH_PATH env var set by IDE
-    ::std::string _sketchDir;
-    if (const char* _sp = ::std::getenv("PROCESSING_SKETCH_PATH"))
-        _sketchDir = ::std::string(_sp) + "/";
+    ::std::string _sketchDir = processingEnvironmentVariable("PROCESSING_SKETCH_PATH");
+    if (!_sketchDir.empty()) _sketchDir += "/";
     // Also get the directory of the running executable
     ::std::string _exeDir;
     {
@@ -5139,7 +5191,7 @@ PImage* PApplet::requestImage(const ::std::string& path){
         };
         ::std::string found;
         for (auto& t : tries) {
-            FILE* f = fopen(t.c_str(), "rb");
+            FILE* f = processingOpenFile(t.c_str(), "rb");
             if (f) { fclose(f); found = t; break; }
         }
         if (found.empty()) {
@@ -5248,8 +5300,8 @@ PImage getRegion(int x,int y,int w,int h){
 
 ::std::vector<::std::string> PApplet::loadStrings(const ::std::string& path) {
     ::std::vector<::std::string> lines;
-    ::std::string sketchDir;
-    if (const char* sp = ::std::getenv("PROCESSING_SKETCH_PATH")) sketchDir = ::std::string(sp) + "/";
+    ::std::string sketchDir = processingEnvironmentVariable("PROCESSING_SKETCH_PATH");
+    if (!sketchDir.empty()) sketchDir += "/";
     ::std::ifstream f(path);
     if (!f) f.open(sketchDir + path);
     if (!f) f.open(sketchDir + "data/" + path);
@@ -5320,4 +5372,8 @@ bool PApplet::saveBytes(const ::std::string& path, const ::std::vector<unsigned 
 }
 
 } // namespace Processing
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 

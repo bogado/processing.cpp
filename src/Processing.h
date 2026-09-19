@@ -1,11 +1,22 @@
 #pragma once
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable: 4365)
+#endif
 #if __has_include("stb_truetype.h") && !defined(PROCESSING_HAS_STB_TRUETYPE)
 #  define PROCESSING_HAS_STB_TRUETYPE 1
 #endif
 #if PROCESSING_HAS_STB_TRUETYPE
 // Include stb_truetype header-only (no implementation) for type definitions
 #  ifndef STB_TRUETYPE_IMPLEMENTATION
+#    if defined(_MSC_VER)
+#      pragma warning(push)
+#      pragma warning(disable: 4365)
+#    endif
 #    include "stb_truetype.h"
+#    if defined(_MSC_VER)
+#      pragma warning(pop)
+#    endif
 #  endif
 #endif
 // On Windows, include <windows.h> explicitly before anything else that needs
@@ -100,7 +111,6 @@
 #include <string>
 #include <vector>
 #include <thread>
-#include <functional>
 #include <algorithm>
 #include <memory>
 #include <map>
@@ -115,11 +125,10 @@
 #include <variant>
 #include <numeric>
 #include <iterator>
-#include <memory>
-#include <regex>
 #include <iomanip>
 #include <unordered_map>
 #include <unordered_set>
+#include <array>
 // ---------------------------------------------------------------------------
 // OpenGL / GLFW
 // ---------------------------------------------------------------------------
@@ -408,7 +417,10 @@ public:
 
     // Construct from packed ARGB integer (0xAARRGGBB)
     explicit PColor(unsigned int argb)
-        : r((argb>>16)&0xFF), g((argb>>8)&0xFF), b(argb&0xFF), a((argb>>24)&0xFF) {}
+        : r(static_cast<float>((argb >> 16) & 0xFFu)),
+          g(static_cast<float>((argb >> 8) & 0xFFu)),
+          b(static_cast<float>(argb & 0xFFu)),
+          a(static_cast<float>((argb >> 24) & 0xFFu)) {}
 
     // Pack to ARGB integer
     unsigned int toARGB() const {
@@ -483,8 +495,8 @@ public:
         return PColor(c1.r+(c2.r-c1.r)*t, c1.g+(c2.g-c1.g)*t, c1.b+(c2.b-c1.b)*t, c1.a+(c2.a-c1.a)*t);
     }
     PColor& clamp() {
-        r=::std::fmax(0,::std::fmin(255,r)); g=::std::fmax(0,::std::fmin(255,g));
-        b=::std::fmax(0,::std::fmin(255,b)); a=::std::fmax(0,::std::fmin(255,a));
+        r=::std::fmax(0.0f,::std::fmin(255.0f,r)); g=::std::fmax(0.0f,::std::fmin(255.0f,g));
+        b=::std::fmax(0.0f,::std::fmin(255.0f,b)); a=::std::fmax(0.0f,::std::fmin(255.0f,a));
         return *this;
     }
     PColor multRGB(float s) const { return PColor(r*s, g*s, b*s, a); }
@@ -495,7 +507,7 @@ public:
         return PColor(src.r*sa+dst.r*(1-sa), src.g*sa+dst.g*(1-sa), src.b*sa+dst.b*(1-sa), 255);
     }
     static PColor add(const PColor& a, const PColor& b) {
-        return PColor(::std::fmin(255,a.r+b.r), ::std::fmin(255,a.g+b.g), ::std::fmin(255,a.b+b.b), a.a);
+        return PColor(::std::fmin(255.0f,a.r+b.r), ::std::fmin(255.0f,a.g+b.g), ::std::fmin(255.0f,a.b+b.b), a.a);
     }
     static PColor multiply(const PColor& a, const PColor& b) {
         return PColor((a.r/255.f)*b.r, (a.g/255.f)*b.g, (a.b/255.f)*b.b, a.a);
@@ -556,11 +568,11 @@ public:
     // Pixel read/write (bounds-checked)
     unsigned int get(int x, int y) const {
         if (x<0||x>=width||y<0||y>=height) return 0;
-        return pixels[y*width+x];
+        return pixels[static_cast<size_t>(y) * static_cast<size_t>(width) + static_cast<size_t>(x)];
     }
     void set(int x, int y, unsigned int c) {
         if (x<0||x>=width||y<0||y>=height) return;
-        pixels[y*width+x] = c;
+        pixels[static_cast<size_t>(y) * static_cast<size_t>(width) + static_cast<size_t>(x)] = c;
         dirty = true;
     }
 
@@ -575,7 +587,7 @@ public:
     // Upload CPU pixels to the GPU texture
     void uploadTexture(); // defined in Processing.cpp
 
-    void resize(int w, int h) { width=w; height=h; pixels.assign(w*h, 0xFF000000); dirty=true; }
+    void resize(int w, int h) { width=w; height=h; pixels.assign(static_cast<size_t>(w) * static_cast<size_t>(h), 0xFF000000u); dirty=true; }
 
     // Apply an image filter to all pixels. Mirrors Java's filter(int kind)
     // -- fills in the same per-mode defaults Java uses when no level is
@@ -603,19 +615,19 @@ public:
 
         if (mode == GRAY) {
             for (auto& p : pixels) {
-                int r=(p>>16)&0xFF, g=(p>>8)&0xFF, b=p&0xFF, a=(p>>24)&0xFF;
+                int r=static_cast<int>((p>>16)&0xFFu), g=static_cast<int>((p>>8)&0xFFu), b=static_cast<int>(p&0xFFu), a=static_cast<int>((p>>24)&0xFFu);
                 int gr = luminance(r,g,b);
                 p = ((unsigned)a<<24)|((unsigned)gr<<16)|((unsigned)gr<<8)|(unsigned)gr;
             }
         } else if (mode == INVERT) {
             for (auto& p : pixels) {
-                int r=(p>>16)&0xFF, g=(p>>8)&0xFF, b=p&0xFF, a=(p>>24)&0xFF;
+                int r=static_cast<int>((p>>16)&0xFFu), g=static_cast<int>((p>>8)&0xFFu), b=static_cast<int>(p&0xFFu), a=static_cast<int>((p>>24)&0xFFu);
                 p = ((unsigned)a<<24)|((unsigned)(255-r)<<16)|((unsigned)(255-g)<<8)|(unsigned)(255-b);
             }
         } else if (mode == THRESHOLD) {
             int t = (int)(param * 255.0f);
             for (auto& p : pixels) {
-                int r=(p>>16)&0xFF, g=(p>>8)&0xFF, b=p&0xFF, a=(p>>24)&0xFF;
+                int r=static_cast<int>((p>>16)&0xFFu), g=static_cast<int>((p>>8)&0xFFu), b=static_cast<int>(p&0xFFu), a=static_cast<int>((p>>24)&0xFFu);
                 int v = luminance(r,g,b) > t ? 255 : 0;
                 p = ((unsigned)a<<24)|((unsigned)v<<16)|((unsigned)v<<8)|(unsigned)v;
             }
@@ -650,7 +662,7 @@ public:
         PImage out(w, h);
         for (int iy=0; iy<h; iy++)
             for (int ix=0; ix<w; ix++)
-                out.pixels[iy*w+ix] = get(x+ix, y+iy);
+                out.pixels[static_cast<size_t>(iy) * static_cast<size_t>(w) + static_cast<size_t>(ix)] = get(x+ix, y+iy);
         return out;
     }
 
@@ -706,13 +718,13 @@ private:
                     if (sx >= w) sx = w-1;
                     if (sy < 0) sy = 0;
                     if (sy >= h) sy = h-1;
-                    unsigned int c = pixels[sy*w+sx];
+                    unsigned int c = pixels[static_cast<size_t>(sy) * static_cast<size_t>(w) + static_cast<size_t>(sx)];
                     sa += (c>>24)&0xFF; sr += (c>>16)&0xFF; sg += (c>>8)&0xFF; sb += c&0xFF;
                     count++;
                 }
                 unsigned int a=(unsigned)(sa/count), rr=(unsigned)(sr/count),
                              g=(unsigned)(sg/count), b=(unsigned)(sb/count);
-                out[y*w+x] = (a<<24)|(rr<<16)|(g<<8)|b;
+                out[static_cast<size_t>(y) * static_cast<size_t>(w) + static_cast<size_t>(x)] = (a<<24)|(rr<<16)|(g<<8)|b;
             }
         }
         pixels = ::std::move(out);
@@ -728,19 +740,19 @@ private:
     void applyMorphology(bool isDilate) {
         ::std::vector<unsigned int> out(pixels.size());
         auto lum = [](unsigned int c) {
-            int r=(c>>16)&0xFF, g=(c>>8)&0xFF, b=c&0xFF;
+            int r=static_cast<int>((c>>16)&0xFFu), g=static_cast<int>((c>>8)&0xFFu), b=static_cast<int>(c&0xFFu);
             return 77*r + 151*g + 28*b;
         };
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
-                int idx = y*width + x;
+                size_t idx = static_cast<size_t>(y) * static_cast<size_t>(width) + static_cast<size_t>(x);
                 unsigned int best = pixels[idx];
                 int bestLum = lum(best);
                 const int nx[4] = {x-1, x+1, x,   x};
                 const int ny[4] = {y,   y,   y-1, y+1};
                 for (int k = 0; k < 4; k++) {
                     if (nx[k]<0 || nx[k]>=width || ny[k]<0 || ny[k]>=height) continue;
-                    unsigned int c = pixels[ny[k]*width + nx[k]];
+                    unsigned int c = pixels[static_cast<size_t>(ny[k]) * static_cast<size_t>(width) + static_cast<size_t>(nx[k])];
                     int l = lum(c);
                     if (isDilate ? (l > bestLum) : (l < bestLum)) { best = c; bestLum = l; }
                 }
@@ -754,8 +766,9 @@ public:
 
     // Apply alpha mask from another grayscale image
     void mask(const PImage& m) {
-        for (int i=0; i<width*height && i<(int)m.pixels.size(); i++) {
-            int a = (m.pixels[i]>>16)&0xFF;
+        const size_t pixelCount = static_cast<size_t>(width) * static_cast<size_t>(height);
+        for (size_t i=0; i<pixelCount && i<m.pixels.size(); i++) {
+            unsigned int a = (m.pixels[i]>>16)&0xFFu;
             pixels[i] = (pixels[i]&0x00FFFFFF)|(a<<24);
         }
         dirty = true;
@@ -766,20 +779,10 @@ public:
     virtual ~PImage() { if (texID) glDeleteTextures(1, &texID); }
 
     // Non-copyable (owns GPU resource -- use PImage* for assignment)
-    PImage(const PImage&) __attribute__((error(
-        "E0002: PImage value-style copying is not supported. "
-        "Declare PImage* instead of PImage. "
-        "See " PROCESSING_WEBSITE_URL "/error/E0002.html"
-    )));
+    PImage(const PImage&) = delete;
     // Prevent PImage img = loadImage(...) -- must use PImage*
-    PImage(PImage*) __attribute__((error(
-        "E0002: Use PImage* not PImage. Write: PImage* img = loadImage(...);"
-    )));
-    PImage& operator=(const PImage&) __attribute__((error(
-        "E0002: PImage value-style assignment is not supported. "
-        "Declare PImage* instead of PImage. "
-        "See " PROCESSING_WEBSITE_URL "/error/E0002.html"
-    )));
+    PImage(PImage*) = delete;
+    PImage& operator=(const PImage&) = delete;
 
     // Movable
     PImage(PImage&& o) noexcept
@@ -1045,16 +1048,8 @@ public:
         if (rbo) glDeleteRenderbuffers(1, &rbo);
     }
 
-    PGraphics(const PGraphics&) __attribute__((error(
-        "E0001: PGraphics value-style copying is not supported. "
-        "Declare PGraphics* instead of PGraphics. "
-        "See " PROCESSING_WEBSITE_URL "/error/E0001.html"
-    )));
-    PGraphics& operator=(const PGraphics&) __attribute__((error(
-        "E0001: PGraphics value-style assignment is not supported. "
-        "Declare PGraphics* instead of PGraphics. "
-        "See " PROCESSING_WEBSITE_URL "/error/E0001.html"
-    )));
+    PGraphics(const PGraphics&) = delete;
+    PGraphics& operator=(const PGraphics&) = delete;
     // Allow assignment from pointer (PGraphics pg; pg = createGraphics(w,h))
     // [E0001] REMOVED: the legacy "PGraphics pg; pg = createGraphics(...);"
     // value-style assignment is no longer supported. PGraphics owns
@@ -1074,11 +1069,7 @@ public:
     // declaration that would behave incorrectly or unsafely. The actual
     // URL in the error message below comes from PROCESSING_WEBSITE_URL
     // (ultimately config/cppmode.properties), never hardcoded here.
-    PGraphics& operator=(PGraphics* p) __attribute__((error(
-        "E0001: PGraphics value-style assignment is not supported. "
-        "Declare PGraphics* instead of PGraphics. "
-        "See " PROCESSING_WEBSITE_URL "/error/E0001"
-    )));
+    PGraphics& operator=(PGraphics* p) = delete;
 };
 
 // =============================================================================
@@ -1414,9 +1405,25 @@ inline unsigned long millis() {
     return static_cast<unsigned long>(duration_cast<milliseconds>(steady_clock::now()-start).count());
 }
 // sketchPath/dataPath -- returns path relative to sketch folder
+inline ::std::string processingEnvironmentVariable(const char* name) {
+#ifdef _WIN32
+    char* value = nullptr;
+    size_t length = 0;
+    if (::_dupenv_s(&value, &length, name) != 0 || value == nullptr) {
+        return {};
+    }
+    ::std::string result(value);
+    ::std::free(value);
+    return result;
+#else
+    const char* value = ::std::getenv(name);
+    return value ? value : ::std::string{};
+#endif
+}
+
 inline ::std::string sketchPath(const ::std::string& where="") {
-    const char* p = ::std::getenv("PROCESSING_SKETCH_PATH");
-    ::std::string base = p ? p : ".";
+    ::std::string base = processingEnvironmentVariable("PROCESSING_SKETCH_PATH");
+    if (base.empty()) base = ".";
     return where.empty() ? base : base + "/" + where;
 }
 inline ::std::string dataPath(const ::std::string& where="") {
@@ -1425,12 +1432,22 @@ inline ::std::string dataPath(const ::std::string& where="") {
 inline ::std::string sketchFile(const ::std::string& where) { return sketchPath(where); }
 inline ::std::string dataFile(const ::std::string& where)   { return dataPath(where); }
 
-inline int second() { ::std::time_t t=::std::time(nullptr); return ::std::localtime(&t)->tm_sec;      }
-inline int minute() { ::std::time_t t=::std::time(nullptr); return ::std::localtime(&t)->tm_min;      }
-inline int hour()   { ::std::time_t t=::std::time(nullptr); return ::std::localtime(&t)->tm_hour;     }
-inline int day()    { ::std::time_t t=::std::time(nullptr); return ::std::localtime(&t)->tm_mday;     }
-inline int month()  { ::std::time_t t=::std::time(nullptr); return ::std::localtime(&t)->tm_mon+1;    }
-inline int year()   { ::std::time_t t=::std::time(nullptr); return ::std::localtime(&t)->tm_year+1900;}
+inline ::std::tm processingLocalTime(::std::time_t t) {
+    ::std::tm result{};
+#ifdef _WIN32
+    ::localtime_s(&result, &t);
+#else
+    ::localtime_r(&t, &result);
+#endif
+    return result;
+}
+
+inline int second() { return processingLocalTime(::std::time(nullptr)).tm_sec;      }
+inline int minute() { return processingLocalTime(::std::time(nullptr)).tm_min;      }
+inline int hour()   { return processingLocalTime(::std::time(nullptr)).tm_hour;     }
+inline int day()    { return processingLocalTime(::std::time(nullptr)).tm_mday;     }
+inline int month()  { return processingLocalTime(::std::time(nullptr)).tm_mon+1;    }
+inline int year()   { return processingLocalTime(::std::time(nullptr)).tm_year+1900;}
 
 // 'color' is a packed 32-bit ARGB integer, just like in Processing Java.
 // Constructors respect the current colorMode setting (see colorMode()).
@@ -1566,8 +1583,8 @@ inline float randomGaussian() {
 inline int   parseInt(const ::std::string& s)   { try { return ::std::stoi(s); } catch(...) { return 0; } }
 inline float parseFloat(const ::std::string& s) { try { return ::std::stof(s); } catch(...) { return 0.f; } }
 inline bool  parseBoolean(const ::std::string& s){ return s=="true"||s=="True"||s=="TRUE"||s=="1"; }
-inline ::std::string toUpperCase(::std::string s) { for(auto& c:s) c=::std::toupper((unsigned char)c); return s; }
-inline ::std::string toLowerCase(::std::string s) { for(auto& c:s) c=::std::tolower((unsigned char)c); return s; }
+inline ::std::string toUpperCase(::std::string s) { for(auto& c:s) c=static_cast<char>(::std::toupper(static_cast<unsigned char>(c))); return s; }
+inline ::std::string toLowerCase(::std::string s) { for(auto& c:s) c=static_cast<char>(::std::tolower(static_cast<unsigned char>(c))); return s; }
 inline ::std::string trim(const ::std::string& s) {
     size_t a=s.find_first_not_of(" \t\n\r"), b=s.find_last_not_of(" \t\n\r");
     return a==::std::string::npos ? "" : s.substr(a, b-a+1);
@@ -1739,7 +1756,7 @@ inline ::std::vector<unsigned char> loadBytes(const ::std::string& path) {
 }
 inline bool saveBytes(const ::std::string& path, const ::std::vector<unsigned char>& data) {
     ::std::ofstream f(path,::std::ios::binary); if (!f) return false;
-    f.write(reinterpret_cast<const char*>(data.data()),data.size());
+    f.write(reinterpret_cast<const char*>(data.data()),static_cast<::std::streamsize>(data.size()));
     return true;
 }
 
@@ -1805,7 +1822,6 @@ static constexpr int MINUS_KEY  = 45;
 // =============================================================================
 
 struct PApplet; // forward decl for template bodies
-inline void fill(color c, int a) { fill(c, (float)a); }
 
 
 
@@ -1866,6 +1882,45 @@ namespace _api {
     void tint(float,float,float,float);
     void strokeWeight(float);
     void rotate(float);
+    void rotateX(float);
+    void rotateY(float);
+    void rotateZ(float);
+    void scale(float);
+    void pushMatrix();
+    void popMatrix();
+    void push();
+    void pop();
+    void pushStyle();
+    void popStyle();
+    void resetMatrix();
+    void beginShape(int=-1);
+    void endShape(int=0);
+    void noFill();
+    void noStroke();
+    void smooth();
+    void noSmooth();
+    void noLoop();
+    void loop();
+    void redraw();
+    void filter(int);
+    void blendMode(int);
+    void rectMode(int);
+    void ellipseMode(int);
+    void imageMode(int);
+    void colorMode(int,float=255.f);
+    void lights();
+    void noLights();
+    void box(float);
+    void box(float,float,float);
+    void sphere(float);
+    void camera();
+    void noTint();
+    void clear();
+    float random(float);
+    float random(float,float);
+    float noise(float);
+    float noise(float,float);
+    float noise(float,float,float);
 }
 
 // int overloads
@@ -3449,7 +3504,7 @@ public:
     ::std::vector<int> subpathStarts; // subpath start indices for multi-part fills
     ::std::vector<Vertex> anchorVerts; // raw anchor points (M/L/C endpoints only) for getVertex()
 
-    PShape* getChild(int i)  { return i<(int)children.size()?&children[i]:nullptr; }
+    PShape* getChild(int i)  { return i>=0 && i<(int)children.size()?&children[static_cast<size_t>(i)]:nullptr; }
     PShape* getChild(const ::std::string& n) {
         for(auto& c:children) if(c.name==n) return &c;
         for(auto& c:children){ PShape* r=c.getChild(n); if(r) return r; }
@@ -3462,13 +3517,13 @@ public:
     int     getChildCount() const    { return (int)children.size(); }
     PVector getVertex(int i) const   {
         if(i<0||i>=(int)verts.size()) return PVector(0,0,0);
-        return PVector(verts[i].x, verts[i].y, verts[i].z);
+        return PVector(verts[static_cast<size_t>(i)].x, verts[static_cast<size_t>(i)].y, verts[static_cast<size_t>(i)].z);
     }
     void    setVertex(int i, float x, float y) {
-        if(i>=0&&i<(int)verts.size()){verts[i].x=x;verts[i].y=y;}
+        if(i>=0&&i<(int)verts.size()){verts[static_cast<size_t>(i)].x=x;verts[static_cast<size_t>(i)].y=y;}
     }
     void    setVertex(int i, float x, float y, float z) {
-        if(i>=0&&i<(int)verts.size()){verts[i].x=x;verts[i].y=y;verts[i].z=z;}
+        if(i>=0&&i<(int)verts.size()){verts[static_cast<size_t>(i)].x=x;verts[static_cast<size_t>(i)].y=y;verts[static_cast<size_t>(i)].z=z;}
     }
 
     // Bounding box (computed from verts + children)
@@ -3515,7 +3570,8 @@ struct PFont {
         #elif defined(__APPLE__)
         dirs.push_back("/Library/Fonts"); dirs.push_back("/System/Library/Fonts");
         #endif
-        if(getenv("HOME")){ dirs.push_back(::std::string(getenv("HOME"))+"/.fonts"); }
+        ::std::string home = processingEnvironmentVariable("HOME");
+        if(!home.empty()){ dirs.push_back(home+"/.fonts"); }
         ::std::function<void(const ::std::string&)> scan=[&](const ::std::string& dir){
             #ifndef _WIN32
             DIR* d=opendir(dir.c_str()); if(!d) return;
@@ -3551,7 +3607,7 @@ struct PFont {
     float       getSize()   const { return size; }
     ::std::string getName() const { return name; }
     bool        isSmooth()  const { return true; }
-    int         getWidth(char c) const { return (int)(size*0.6f); } // approximation
+    int         getWidth(char) const { return static_cast<int>(size*0.6f); } // approximation
 };
 
 
@@ -3644,16 +3700,8 @@ public:
     void set(const ::std::string& n, double x, double y, double z, double w){ set(n,(float)x,(float)y,(float)z,(float)w); }
 
     ~PShader() { if(program)glDeleteProgram(program); if(vert)glDeleteShader(vert); if(frag)glDeleteShader(frag); }
-    PShader(const PShader&) __attribute__((error(
-        "E0003: PShader value-style copying is not supported. "
-        "Declare PShader* instead of PShader. "
-        "See " PROCESSING_WEBSITE_URL "/error/E0003.html"
-    )));
-    PShader& operator=(const PShader&) __attribute__((error(
-        "E0003: PShader value-style assignment is not supported. "
-        "Declare PShader* instead of PShader. "
-        "See " PROCESSING_WEBSITE_URL "/error/E0003.html"
-    )));
+    PShader(const PShader&) = delete;
+    PShader& operator=(const PShader&) = delete;
     PShader(PShader&& o) noexcept
         : program(o.program),vert(o.vert),frag(o.frag),
           vertSrc(o.vertSrc),fragSrc(o.fragSrc),linked(o.linked)
@@ -3796,7 +3844,7 @@ public:
     TableRow() = default;
     TableRow(::std::vector<::std::string>& r, ::std::vector<::std::string>& c) : row(&r), cols(&c) {}
 
-    ::std::string getString(int i)                   const { return (row&&i<(int)row->size())?(*row)[i]:""; }
+    ::std::string getString(int i)                   const { return (row&&i>=0&&i<(int)row->size())?(*row)[static_cast<size_t>(i)]:""; }
     ::std::string getString(const ::std::string& col)  const {
         if (!cols) return "";
         for (int i=0;i<(int)cols->size();i++) if((*cols)[i]==col) return getString(i);
@@ -3806,7 +3854,7 @@ public:
     int   getInt(const ::std::string& c) const { auto s=getString(c);   return s.empty()?0:std::stoi(s); }
     float getFloat(int i)              const { auto s=getString(i);   return s.empty()?0:std::stof(s); }
     float getFloat(const ::std::string& c)const{ auto s=getString(c);   return s.empty()?0:std::stof(s); }
-    void  setString(int i, const ::std::string& v) { if(row&&i<(int)row->size()) (*row)[i]=v; }
+    void  setString(int i, const ::std::string& v) { if(row&&i>=0&&i<(int)row->size()) (*row)[static_cast<size_t>(i)]=v; }
     void  setInt(int i, int v)                   { setString(i, ::std::to_string(v)); }
     void  setFloat(int i, float v)               { setString(i, ::std::to_string(v)); }
 };
@@ -3818,13 +3866,13 @@ public:
 // Table::getRow() -- defined here after TableRow
 inline TableRow Table_getRow_impl(Table& t, int i) {
     if(i<0||i>=(int)t.rows.size()) return TableRow();
-    return TableRow(t.rows[i], t.columns);
+    return TableRow(t.rows[static_cast<size_t>(i)], t.columns);
 }
 
 // Table getRow() free helper -- use t.getRow(i) via macro or just call this
 inline TableRow tableGetRow(Table& t, int i) {
     if(i<0||i>=(int)t.rows.size()) return TableRow();
-    return TableRow(t.rows[i], t.columns);
+    return TableRow(t.rows[static_cast<size_t>(i)], t.columns);
 }
 
 inline PVector createVector(float x, float y, float z=0) { return PVector(x, y, z); }
@@ -4050,8 +4098,8 @@ template<class A,class B> inline auto max(A a,B b)->decltype((float)a){ return (
 template<class A,class B,class C> inline auto max(A a,B b,C c)->decltype((float)a){ float fa=(float)a,fb=(float)b,fc=(float)c; return fa>fb?(fa>fc?fa:fc):(fb>fc?fb:fc); }
 // lerpColor and blendColor as free functions
 inline color lerpColor(color c1, color c2, float t) {
-    int r1=(c1.value>>16)&0xFF, g1=(c1.value>>8)&0xFF, b1=c1.value&0xFF, a1=(c1.value>>24)&0xFF;
-    int r2=(c2.value>>16)&0xFF, g2=(c2.value>>8)&0xFF, b2=c2.value&0xFF, a2=(c2.value>>24)&0xFF;
+    int r1=static_cast<int>((c1.value>>16)&0xFFu), g1=static_cast<int>((c1.value>>8)&0xFFu), b1=static_cast<int>(c1.value&0xFFu), a1=static_cast<int>((c1.value>>24)&0xFFu);
+    int r2=static_cast<int>((c2.value>>16)&0xFFu), g2=static_cast<int>((c2.value>>8)&0xFFu), b2=static_cast<int>(c2.value&0xFFu), a2=static_cast<int>((c2.value>>24)&0xFFu);
     int r=(int)(r1+(r2-r1)*t), g=(int)(g1+(g2-g1)*t), b=(int)(b1+(b2-b1)*t), a=(int)(a1+(a2-a1)*t);
     return colorVal(r,g,b,a);
 }
@@ -4257,23 +4305,23 @@ struct PApplet {
     virtual void draw()          {}
     virtual void settings()      {}
     virtual void mousePressed()              {}
-    virtual void mousePressed(MouseEvent e)  {}
+    virtual void mousePressed(MouseEvent)    {}
     virtual void mouseReleased()             {}
-    virtual void mouseReleased(MouseEvent e) {}
+    virtual void mouseReleased(MouseEvent)   {}
     virtual void mouseClicked()              {}
-    virtual void mouseClicked(MouseEvent e)  {}
+    virtual void mouseClicked(MouseEvent)    {}
     virtual void mouseMoved()                {}
-    virtual void mouseMoved(MouseEvent e)    {}
+    virtual void mouseMoved(MouseEvent)      {}
     virtual void mouseDragged()              {}
-    virtual void mouseDragged(MouseEvent e)  {}
-    virtual void mouseWheel(int delta)       {}
-    virtual void mouseWheel(MouseEvent e)    {}
+    virtual void mouseDragged(MouseEvent)    {}
+    virtual void mouseWheel(int)             {}
+    virtual void mouseWheel(MouseEvent)      {}
     virtual void keyPressed()                {}
-    virtual void keyPressed(KeyEvent e)      {}
+    virtual void keyPressed(KeyEvent)        {}
     virtual void keyReleased()               {}
-    virtual void keyReleased(KeyEvent e)     {}
+    virtual void keyReleased(KeyEvent)       {}
     virtual void keyTyped()                  {}
-    virtual void keyTyped(KeyEvent e)        {}
+    virtual void keyTyped(KeyEvent)          {}
     virtual void windowMoved()   {}
     virtual void windowResized() {}
 
@@ -4310,7 +4358,7 @@ struct PApplet {
     void hint(int which);
     void cursor();
     void cursor(int type);
-    void cursor(PImage* img, int x=0, int y=0) { cursor(); } // custom cursor stub
+    void cursor(PImage*, int=0, int=0) { cursor(); } // custom cursor stub
     void noCursor();
     void captureMouse();
     void releaseMouse();
@@ -4332,12 +4380,12 @@ struct PApplet {
         return (unsigned long)::std::chrono::duration_cast<::std::chrono::milliseconds>(
             ::std::chrono::steady_clock::now() - _start).count();
     }
-    static int  second() { ::std::time_t t=::std::time(nullptr); return ::std::localtime(&t)->tm_sec;      }
-    static int  minute() { ::std::time_t t=::std::time(nullptr); return ::std::localtime(&t)->tm_min;      }
-    static int  hour()   { ::std::time_t t=::std::time(nullptr); return ::std::localtime(&t)->tm_hour;     }
-    static int  day()    { ::std::time_t t=::std::time(nullptr); return ::std::localtime(&t)->tm_mday;     }
-    static int  month()  { ::std::time_t t=::std::time(nullptr); return ::std::localtime(&t)->tm_mon+1;    }
-    static int  year()   { ::std::time_t t=::std::time(nullptr); return ::std::localtime(&t)->tm_year+1900;}
+    static int  second() { return processingLocalTime(::std::time(nullptr)).tm_sec;      }
+    static int  minute() { return processingLocalTime(::std::time(nullptr)).tm_min;      }
+    static int  hour()   { return processingLocalTime(::std::time(nullptr)).tm_hour;     }
+    static int  day()    { return processingLocalTime(::std::time(nullptr)).tm_mday;     }
+    static int  month()  { return processingLocalTime(::std::time(nullptr)).tm_mon+1;    }
+    static int  year()   { return processingLocalTime(::std::time(nullptr)).tm_year+1900;}
     static void delay(int ms) { ::std::this_thread::sleep_for(::std::chrono::milliseconds(ms)); }
     void thread(::std::function<void()> fn) { ::std::thread(fn).detach(); }
 
@@ -5191,6 +5239,9 @@ inline void PGraphics::_endDrawImpl() {
         glBlitFramebuffer(0, 0, width, height, 0, 0, width, height,
                            GL_COLOR_BUFFER_BIT, GL_LINEAR);
         GLenum err = glGetError();
+        (void)readStatus;
+        (void)drawStatus;
+        (void)err;
         PDEBUG("_endDrawImpl blit-resolve: readStatus=0x%x drawStatus=0x%x glError=0x%x width=%d height=%d is3D=%d\n",
                readStatus, drawStatus, err, width, height, is3D);
     }
@@ -5324,3 +5375,7 @@ inline void link(const char* url){link(::std::string(url));}
 
 
 } // namespace Processing
+
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
