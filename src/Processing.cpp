@@ -706,7 +706,7 @@ void PApplet::setClipboard(const ::std::string& s) {
 // ---------------------------------------------------------------------------
 // Window icon
 // ---------------------------------------------------------------------------
-void PApplet::setWindowIcon(PImage* img) {
+void PApplet::setWindowIcon(const PImage* img) {
     if (!img || !gWindow) return;
     // Convert ARGB pixels (Processing internal) to RGBA (GLFW wants RGBA)
     ::std::vector<unsigned char> rgba(img->width * img->height * 4);
@@ -2713,7 +2713,7 @@ PGraphics* PApplet::createGraphics(int w,int h,int renderer){
 }
 
 // ── PImage::uploadTexture ────────────────────────────────────────────────────
-void PImage::uploadTexture() {
+void PImage::uploadTexture() const {
     if (width <= 0 || height <= 0 || pixels.empty()) return;
     if ((int)pixels.size() < width * height) return;
     ::std::vector<unsigned char> rgba((size_t)width * height * 4);
@@ -2737,7 +2737,7 @@ void PImage::uploadTexture() {
     dirty = false;
 }
 
-void PApplet::drawImageRect(PImage& img,float x,float y,float w,float h){
+void PApplet::drawImageRect(const PImage& img,float x,float y,float w,float h){
     if(img.width==0||img.height==0) return;
     if(img.dirty) img.uploadTexture();
     if(img.texID==0) return;
@@ -2773,7 +2773,7 @@ void PApplet::drawImageRect(PImage& img,float x,float y,float w,float h){
 // ── image() canonical implementation ─────────────────────────────────────────
 // Single entry point: everything goes through drawImage_impl.
 // Takes a raw PImage pointer so no reference/ABI issues across TUs.
-void PApplet::drawImage_impl(PImage* img, float x, float y, float w, float h) {
+void PApplet::drawImage_impl(const PImage* img, float x, float y, float w, float h) {
     if (!img || img->width == 0 || img->height == 0) return;
     // Apply imageMode to x,y,w,h
     float dx = x, dy = y, dw = w, dh = h;
@@ -2829,25 +2829,19 @@ void PApplet::drawPGraphicsRect(PGraphics& pg, float x, float y, float w, float 
 }
 void PApplet::image(PGraphics& pg, float x, float y){ drawPGraphicsRect(pg,x,y,(float)pg.width,(float)pg.height); }
 void PApplet::image(PGraphics& pg, float x, float y, float w, float h){ drawPGraphicsRect(pg,x,y,w,h); }
-void PApplet::image(PImage* img, float x, float y) {
-    if(!img || img->width==0 || img->height==0) return;
-    drawImage_impl(img, x, y, (float)img->width, (float)img->height);
-}
-void PApplet::image(PImage* img, float x, float y, float w, float h) {
-    if(!img || img->width==0 || img->height==0) return;
-    drawImage_impl(img, x, y, w, h);
-}
+void PApplet::image(const PImage& img, float x, float y, float w, float h){ drawImage_impl(&img, x, y, w, h); }
+
 // Nine-argument form: image(img, dx1,dy1,dx2,dy2, sx1,sy1,sx2,sy2)
-void PApplet::image(PImage* img, float dx1,float dy1,float dx2,float dy2,
+void PApplet::image(const PImage& img, float dx1,float dy1,float dx2,float dy2,
                                float sx1,float sy1,float sx2,float sy2) {
-    if(!img || img->width==0 || img->height==0) return;
-    if(img->dirty) img->uploadTexture();
-    if(img->texID==0) return;
+    if(img.width==0 || img.height==0) return;
+    if(img.dirty) img.uploadTexture();
+    if(img.texID==0) return;
     // Convert source pixel coords to UV [0,1]
-    float u1=sx1/img->width, v1=sy1/img->height;
-    float u2=sx2/img->width, v2=sy2/img->height;
+    float u1=sx1/img.width, v1=sy1/img.height;
+    float u2=sx2/img.width, v2=sy2/img.height;
     glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
-    glEnable(GL_TEXTURE_2D); glBindTexture(GL_TEXTURE_2D,img->texID);
+    glEnable(GL_TEXTURE_2D); glBindTexture(GL_TEXTURE_2D,img.texID);
     glColor4f(doTint?tintR:1.f,doTint?tintG:1.f,doTint?tintB:1.f,doTint?tintA:1.f);
     glBegin(GL_QUADS);
     glTexCoord2f(u1,v1); glVertex2f(dx1,dy1);
@@ -3630,7 +3624,12 @@ void PApplet::run(){
     glewExperimental = GL_TRUE;
     glewExperimental = GL_TRUE;
     GLenum glewErr = glewInit();
+#ifdef linux
+    if(glewErr != GLEW_OK && getenv("WAYLAND-DISPLAY") != nullptr && glewErr != GLEW_ERROR_NO_GLX_DISPLAY){
+#else
     if(glewErr != GLEW_OK){
+#endif
+
 #ifdef _WIN32
         char msg[256]; snprintf(msg,sizeof(msg),"glewInit() failed: %s", glewGetErrorString(glewErr));
         MessageBoxA(NULL, msg, "processing-cpp Error", MB_OK|MB_ICONERROR);
@@ -4034,80 +4033,6 @@ void PApplet::run(){
     }, this, 0, 1);
 #endif
 }
-
-// =============================================================================
-// PGRAPHICS EXTENDED METHOD IMPLEMENTATIONS
-// All methods call through to PApplet after beginDraw() has set up context.
-// =============================================================================
-
-void PGraphics::stroke(float g, float a)               { if(PApplet::g_papplet) PApplet::g_papplet->stroke(g,a); }
-void PGraphics::stroke(float r, float g, float b, float a){ if(PApplet::g_papplet) PApplet::g_papplet->stroke(r,g,b,a); }
-void PGraphics::stroke(color c)                        { if(PApplet::g_papplet) PApplet::g_papplet->stroke(c); }
-void PGraphics::fill(float g, float a)                 { if(PApplet::g_papplet) PApplet::g_papplet->fill(g,a); }
-void PGraphics::fill(color c)                          { if(PApplet::g_papplet) PApplet::g_papplet->fill(c); }
-void PGraphics::background(color c)                    { if(PApplet::g_papplet) PApplet::g_papplet->background(c); }
-void PGraphics::beginShape(int kind)                   { if(PApplet::g_papplet) PApplet::g_papplet->beginShape(kind); }
-void PGraphics::vertex(float x, float y, float z)     { if(PApplet::g_papplet) PApplet::g_papplet->vertex(x,y,z); }
-void PGraphics::camera()                               { if(PApplet::g_papplet) PApplet::g_papplet->camera(); }
-void PGraphics::camera(float ex,float ey,float ez,float cx,float cy,float cz,float ux,float uy,float uz)
-                                                       { if(PApplet::g_papplet) PApplet::g_papplet->camera(ex,ey,ez,cx,cy,cz,ux,uy,uz); }
-void PGraphics::perspective()                          { if(PApplet::g_papplet) PApplet::g_papplet->perspective(); }
-void PGraphics::perspective(float fov,float aspect,float zNear,float zFar)
-                                                       { if(PApplet::g_papplet) PApplet::g_papplet->perspective(fov,aspect,zNear,zFar); }
-void PGraphics::ortho()                                { if(PApplet::g_papplet) PApplet::g_papplet->ortho(); }
-void PGraphics::ortho(float l,float r,float b,float t,float n,float f)
-                                                       { if(PApplet::g_papplet) PApplet::g_papplet->ortho(l,r,b,t,n,f); }
-void PGraphics::bezier(float x1,float y1,float cx1,float cy1,float cx2,float cy2,float x2,float y2)
-                                                       { if(PApplet::g_papplet) PApplet::g_papplet->bezier(x1,y1,cx1,cy1,cx2,cy2,x2,y2); }
-void PGraphics::curve(float x0,float y0,float x1,float y1,float x2,float y2,float x3,float y3)
-                                                       { if(PApplet::g_papplet) PApplet::g_papplet->curve(x0,y0,x1,y1,x2,y2,x3,y3); }
-void PGraphics::bezierVertex(float cx1,float cy1,float cx2,float cy2,float x,float y)
-                                                       { if(PApplet::g_papplet) PApplet::g_papplet->bezierVertex(cx1,cy1,cx2,cy2,x,y); }
-void PGraphics::curveVertex(float x, float y)          { if(PApplet::g_papplet) PApplet::g_papplet->curveVertex(x,y); }
-void PGraphics::image(PImage* img,float x,float y)    { if(PApplet::g_papplet) PApplet::g_papplet->image(img,x,y); }
-void PGraphics::image(PImage* img,float x,float y,float w,float h)
-                                                       { if(PApplet::g_papplet) PApplet::g_papplet->image(img,x,y,w,h); }
-void PGraphics::tint(float gray)                       { if(PApplet::g_papplet) PApplet::g_papplet->tint(gray); }
-void PGraphics::tint(float gray,float a)               { if(PApplet::g_papplet) PApplet::g_papplet->tint(gray,a); }
-void PGraphics::tint(float r,float g,float b,float a)  { if(PApplet::g_papplet) PApplet::g_papplet->tint(r,g,b,a); }
-void PGraphics::noTint()                               { if(PApplet::g_papplet) PApplet::g_papplet->noTint(); }
-void PGraphics::colorMode(int mode,float mx)           { if(PApplet::g_papplet) PApplet::g_papplet->colorMode(mode,mx); }
-void PGraphics::colorMode(int mode,float mH,float mS,float mB,float mA)
-                                                       { if(PApplet::g_papplet) PApplet::g_papplet->colorMode(mode,mH,mS,mB,mA); }
-void PGraphics::textLeading(float v)                   { if(PApplet::g_papplet) PApplet::g_papplet->textLeading(v); }
-float PGraphics::textWidth(const ::std::string& s)       { return PApplet::g_papplet ? PApplet::g_papplet->textWidth(s) : 0; }
-void PGraphics::push()                                 { if(PApplet::g_papplet) PApplet::g_papplet->push(); }
-void PGraphics::pop()                                  { if(PApplet::g_papplet) PApplet::g_papplet->pop(); }
-void PGraphics::scale(float sx,float sy)               { if(PApplet::g_papplet) PApplet::g_papplet->scale(sx,sy); }
-void PGraphics::rect(float x,float y,float w,float h,float r)                     { if(PApplet::g_papplet) PApplet::g_papplet->rect(x,y,w,h,r); }
-void PGraphics::resetMatrix()                          { if(PApplet::g_papplet) PApplet::g_papplet->resetMatrix(); }
-void PGraphics::shearX(float a)                        { if(PApplet::g_papplet) PApplet::g_papplet->shearX(a); }
-void PGraphics::shearY(float a)                        { if(PApplet::g_papplet) PApplet::g_papplet->shearY(a); }
-void PGraphics::normal(float nx,float ny,float nz)     { if(PApplet::g_papplet) PApplet::g_papplet->normal(nx,ny,nz); }
-void PGraphics::shininess(float s)                     { if(PApplet::g_papplet) PApplet::g_papplet->shininess(s); }
-void PGraphics::specular(float r,float g,float b)      { if(PApplet::g_papplet) PApplet::g_papplet->specular(r,g,b); }
-void PGraphics::emissive(float r,float g,float b)      { if(PApplet::g_papplet) PApplet::g_papplet->emissive(r,g,b); }
-void PGraphics::ambient(float r,float g,float b)       { if(PApplet::g_papplet) PApplet::g_papplet->ambient(r,g,b); }
-void PGraphics::rectMode(int m)                        { if(PApplet::g_papplet) PApplet::g_papplet->rectMode(m); }
-void PGraphics::ellipseMode(int m)                     { if(PApplet::g_papplet) PApplet::g_papplet->ellipseMode(m); }
-void PGraphics::imageMode(int m)                       { if(PApplet::g_papplet) PApplet::g_papplet->imageMode(m); }
-void PGraphics::noSmooth()                             { if(PApplet::g_papplet) PApplet::g_papplet->noSmooth(); }
-void PGraphics::smooth()                               { if(PApplet::g_papplet) PApplet::g_papplet->smooth(); }
-void PGraphics::circle(float x,float y,float d)        { if(PApplet::g_papplet) PApplet::g_papplet->circle(x,y,d); }
-void PGraphics::square(float x,float y,float s)        { if(PApplet::g_papplet) PApplet::g_papplet->square(x,y,s); }
-void PGraphics::quad(float x1,float y1,float x2,float y2,float x3,float y3,float x4,float y4)
-                                                       { if(PApplet::g_papplet) PApplet::g_papplet->quad(x1,y1,x2,y2,x3,y3,x4,y4); }
-void PGraphics::arc(float cx,float cy,float w,float h,float sa,float ea)
-                                                       { if(PApplet::g_papplet) PApplet::g_papplet->arc(cx,cy,w,h,sa,ea); }
-void PGraphics::arc(float cx,float cy,float w,float h,float sa,float ea,int mode)
-                                                       { if(PApplet::g_papplet) PApplet::g_papplet->arc(cx,cy,w,h,sa,ea,mode); }
-void PGraphics::blendMode(int mode)                    { if(PApplet::g_papplet) PApplet::g_papplet->blendMode(mode); }
-void PGraphics::clip(float x,float y,float w,float h)  { if(PApplet::g_papplet) PApplet::g_papplet->clip(x,y,w,h); }
-void PGraphics::noClip()                               { if(PApplet::g_papplet) PApplet::g_papplet->noClip(); }
-void PGraphics::loadPixels()                           { if(PApplet::g_papplet) PApplet::g_papplet->loadPixels(); }
-void PGraphics::updatePixels()                         { if(PApplet::g_papplet) PApplet::g_papplet->updatePixels(); }
-color PGraphics::get(int x,int y)                      { return PApplet::g_papplet ? PApplet::g_papplet->get(x,y) : color(0); }
-void PGraphics::set(int x,int y,color c)               { if(PApplet::g_papplet) PApplet::g_papplet->set(x,y,c); }
 
 // =============================================================================
 // JSON IMPLEMENTATION

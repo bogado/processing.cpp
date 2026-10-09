@@ -553,8 +553,9 @@ public:
     int  width  = 0;
     int  height = 0;
     ::std::vector<unsigned int> pixels;
-    GLuint texID = 0;
-    bool   dirty = false;
+
+    mutable GLuint texID = 0;
+    mutable bool   dirty = false;
 
     PImage() = default;
     PImage(int w, int h) {
@@ -578,14 +579,14 @@ public:
 
     // These mirror the Processing Java API; dirty flag is used by updatePixels()
     void loadPixels()   {}
-    void updatePixels() { dirty = true; }
+    void updatePixels() const { dirty = true; }
     bool isLoaded()  const { return width>0 && height>0; }
     int  getWidth()  const { return width; }
     int  getHeight() const { return height; }
     int  format      = 1; // RGB=1, ARGB=2, ALPHA=4
 
     // Upload CPU pixels to the GPU texture
-    void uploadTexture(); // defined in Processing.cpp
+    void uploadTexture() const; // defined in Processing.cpp
 
     void resize(int w, int h) { width=w; height=h; pixels.assign(static_cast<size_t>(w) * static_cast<size_t>(h), 0xFF000000u); dirty=true; }
 
@@ -986,9 +987,9 @@ public:
     void bezierVertex(float cx1,float cy1,float cz1,float cx2,float cy2,float cz2,float x,float y,float z);
     void curveVertex(float x, float y);
     void curveVertex(float x, float y, float z);
-    void image(PImage* img, float x, float y);
-    void image(PImage* img, float x, float y, float w, float h);
-    void image(PImage* img, float dx1,float dy1,float dx2,float dy2,float sx1,float sy1,float sx2,float sy2);
+    void image(const PImage* img, float x, float y);
+    void image(const PImage* img, float x, float y, float w, float h);
+    void image(const PImage* img, float dx1,float dy1,float dx2,float dy2,float sx1,float sy1,float sx2,float sy2);
     void tint(float gray);
     void tint(float gray, float a);
     void tint(float r, float g, float b, float a);
@@ -4358,7 +4359,7 @@ struct PApplet {
     void hint(int which);
     void cursor();
     void cursor(int type);
-    void cursor(PImage*, int=0, int=0) { cursor(); } // custom cursor stub
+    void cursor(const PImage*, int=0, int=0) { cursor(); } // custom cursor stub
     void noCursor();
     void captureMouse();
     void releaseMouse();
@@ -4367,7 +4368,7 @@ struct PApplet {
     void setResizable(bool r)           { windowResizable(r); }
     void setClipboard(const ::std::string& s);
     ::std::string getClipboard();
-    void setWindowIcon(PImage* img);
+    void setWindowIcon(const PImage* img);
     bool isCtrlDown();
     bool isShiftDown();
     bool isAltDown();
@@ -4666,10 +4667,8 @@ struct PApplet {
     PGraphics* createGraphics(int w, int h, int renderer); // matches size(w,h,renderer)
     PImage*    requestImage(const ::std::string& path);
     void imageMode(int mode);
-    void image(PImage* img, float x, float y);
-    void image(PImage* img, float x, float y, float w, float h);
-    void image(PImage* img, float dx1,float dy1,float dx2,float dy2,float sx1,float sy1,float sx2,float sy2);
-    void image(const PImage& img, float x, float y);
+    void image(const PImage& img, float dx1,float dy1,float dx2,float dy2,float sx1,float sy1,float sx2,float sy2);
+    void image(const PImage& img, float x, float y) { image(img, x,y, img.width, img.height); }
     void image(const PImage& img, float x, float y, float w, float h);
     void image(const PImage* img, float x, float y) { if(img) image(*img,x,y); }
     void image(const PImage* img, float x, float y, float w, float h) { if(img) image(*img,x,y,w,h); }
@@ -4991,8 +4990,8 @@ protected:
 #endif
     float getLineWidth(const ::std::string& line);
     void  renderText(const ::std::string& msg, float x, float y);
-    void  drawImageRect(PImage& img, float x, float y, float w, float h);
-    void  drawImage_impl(PImage* img, float x, float y, float w, float h);
+    void  drawImageRect(const PImage& img, float x, float y, float w, float h);
+    void  drawImage_impl(const PImage* img, float x, float y, float w, float h);
     void  drawPGraphicsRect(PGraphics& pg, float x, float y, float w, float h);
     void  drawPShape(const PShape& s, float x, float y, float w=-1, float h=-1, bool parentStyleEnabled=true);
     void  hsbToRgb(float h, float s, float b, float& outR, float& outG, float& outB);
@@ -5359,6 +5358,76 @@ inline void PGraphics::pointLight(float r, float g, float b, float x, float y, f
 inline void PGraphics::spotLight(float r, float g, float b, float x, float y, float z, float nx, float ny, float nz, float angle, float conc) { if(PApplet::g_papplet) PApplet::g_papplet->spotLight(r,g,b,x,y,z,nx,ny,nz,angle,conc); }
 inline void PGraphics::lightFalloff(float c, float l, float q)       { if(PApplet::g_papplet) PApplet::g_papplet->lightFalloff(c,l,q); }
 inline void PGraphics::lightSpecular(float r, float g, float b)      { if(PApplet::g_papplet) PApplet::g_papplet->lightSpecular(r,g,b); }
+inline void PGraphics::stroke(float g, float a)               { if(PApplet::g_papplet) PApplet::g_papplet->stroke(g,a); }
+inline void PGraphics::stroke(float r, float g, float b, float a){ if(PApplet::g_papplet) PApplet::g_papplet->stroke(r,g,b,a); }
+inline void PGraphics::stroke(color c)                        { if(PApplet::g_papplet) PApplet::g_papplet->stroke(c); }
+inline void PGraphics::fill(float g, float a)                 { if(PApplet::g_papplet) PApplet::g_papplet->fill(g,a); }
+inline void PGraphics::fill(color c)                          { if(PApplet::g_papplet) PApplet::g_papplet->fill(c); }
+inline void PGraphics::background(color c)                    { if(PApplet::g_papplet) PApplet::g_papplet->background(c); }
+inline void PGraphics::beginShape(int kind)                   { if(PApplet::g_papplet) PApplet::g_papplet->beginShape(kind); }
+inline void PGraphics::vertex(float x, float y, float z)     { if(PApplet::g_papplet) PApplet::g_papplet->vertex(x,y,z); }
+inline void PGraphics::camera()                               { if(PApplet::g_papplet) PApplet::g_papplet->camera(); }
+inline void PGraphics::camera(float ex,float ey,float ez,float cx,float cy,float cz,float ux,float uy,float uz)
+                                                       { if(PApplet::g_papplet) PApplet::g_papplet->camera(ex,ey,ez,cx,cy,cz,ux,uy,uz); }
+inline void PGraphics::perspective()                          { if(PApplet::g_papplet) PApplet::g_papplet->perspective(); }
+inline void PGraphics::perspective(float fov,float aspect,float zNear,float zFar)
+                                                       { if(PApplet::g_papplet) PApplet::g_papplet->perspective(fov,aspect,zNear,zFar); }
+inline void PGraphics::ortho()                                { if(PApplet::g_papplet) PApplet::g_papplet->ortho(); }
+inline void PGraphics::ortho(float l,float r,float b,float t,float n,float f)
+                                                       { if(PApplet::g_papplet) PApplet::g_papplet->ortho(l,r,b,t,n,f); }
+inline void PGraphics::bezier(float x1,float y1,float cx1,float cy1,float cx2,float cy2,float x2,float y2)
+                                                       { if(PApplet::g_papplet) PApplet::g_papplet->bezier(x1,y1,cx1,cy1,cx2,cy2,x2,y2); }
+inline void PGraphics::curve(float x0,float y0,float x1,float y1,float x2,float y2,float x3,float y3)
+                                                       { if(PApplet::g_papplet) PApplet::g_papplet->curve(x0,y0,x1,y1,x2,y2,x3,y3); }
+inline void PGraphics::bezierVertex(float cx1,float cy1,float cx2,float cy2,float x,float y)
+                                                       { if(PApplet::g_papplet) PApplet::g_papplet->bezierVertex(cx1,cy1,cx2,cy2,x,y); }
+inline void PGraphics::curveVertex(float x, float y)          { if(PApplet::g_papplet) PApplet::g_papplet->curveVertex(x,y); }
+inline void PGraphics::image(const PImage* img,float x,float y)    { if(PApplet::g_papplet) PApplet::g_papplet->image(img,x,y); }
+inline void PGraphics::image(const PImage* img,float x,float y,float w,float h)
+                                                       { if(PApplet::g_papplet) PApplet::g_papplet->image(img,x,y,w,h); }
+inline void PGraphics::image(const PImage* img,float dx1,float dy1,float dx2,float dy2,float sx1,float sy1,float sx2,float sy2)
+                                                       { if(img && PApplet::g_papplet) PApplet::g_papplet->image(*img,dx1,dy1,dx2,dy2,sx1,sy1,sx2,sy2); }
+inline void PGraphics::tint(float gray)                       { if(PApplet::g_papplet) PApplet::g_papplet->tint(gray); }
+inline void PGraphics::tint(float gray,float a)               { if(PApplet::g_papplet) PApplet::g_papplet->tint(gray,a); }
+inline void PGraphics::tint(float r,float g,float b,float a)  { if(PApplet::g_papplet) PApplet::g_papplet->tint(r,g,b,a); }
+inline void PGraphics::noTint()                               { if(PApplet::g_papplet) PApplet::g_papplet->noTint(); }
+inline void PGraphics::colorMode(int mode,float mx)           { if(PApplet::g_papplet) PApplet::g_papplet->colorMode(mode,mx); }
+inline void PGraphics::colorMode(int mode,float mH,float mS,float mB,float mA)
+                                                       { if(PApplet::g_papplet) PApplet::g_papplet->colorMode(mode,mH,mS,mB,mA); }
+inline void PGraphics::textLeading(float v)                   { if(PApplet::g_papplet) PApplet::g_papplet->textLeading(v); }
+inline float PGraphics::textWidth(const ::std::string& s)       { return PApplet::g_papplet ? PApplet::g_papplet->textWidth(s) : 0; }
+inline void PGraphics::push()                                 { if(PApplet::g_papplet) PApplet::g_papplet->push(); }
+inline void PGraphics::pop()                                  { if(PApplet::g_papplet) PApplet::g_papplet->pop(); }
+inline void PGraphics::scale(float sx,float sy)               { if(PApplet::g_papplet) PApplet::g_papplet->scale(sx,sy); }
+inline void PGraphics::rect(float x,float y,float w,float h,float r)                     { if(PApplet::g_papplet) PApplet::g_papplet->rect(x,y,w,h,r); }
+inline void PGraphics::resetMatrix()                          { if(PApplet::g_papplet) PApplet::g_papplet->resetMatrix(); }
+inline void PGraphics::shearX(float a)                        { if(PApplet::g_papplet) PApplet::g_papplet->shearX(a); }
+inline void PGraphics::shearY(float a)                        { if(PApplet::g_papplet) PApplet::g_papplet->shearY(a); }
+inline void PGraphics::normal(float nx,float ny,float nz)     { if(PApplet::g_papplet) PApplet::g_papplet->normal(nx,ny,nz); }
+inline void PGraphics::shininess(float s)                     { if(PApplet::g_papplet) PApplet::g_papplet->shininess(s); }
+inline void PGraphics::specular(float r,float g,float b)      { if(PApplet::g_papplet) PApplet::g_papplet->specular(r,g,b); }
+inline void PGraphics::emissive(float r,float g,float b)      { if(PApplet::g_papplet) PApplet::g_papplet->emissive(r,g,b); }
+inline void PGraphics::ambient(float r,float g,float b)       { if(PApplet::g_papplet) PApplet::g_papplet->ambient(r,g,b); }
+inline void PGraphics::rectMode(int m)                        { if(PApplet::g_papplet) PApplet::g_papplet->rectMode(m); }
+inline void PGraphics::ellipseMode(int m)                     { if(PApplet::g_papplet) PApplet::g_papplet->ellipseMode(m); }
+inline void PGraphics::imageMode(int m)                       { if(PApplet::g_papplet) PApplet::g_papplet->imageMode(m); }
+inline void PGraphics::noSmooth()                             { if(PApplet::g_papplet) PApplet::g_papplet->noSmooth(); }
+inline void PGraphics::smooth()                               { if(PApplet::g_papplet) PApplet::g_papplet->smooth(); }
+inline void PGraphics::circle(float x,float y,float d)        { if(PApplet::g_papplet) PApplet::g_papplet->circle(x,y,d); }
+inline void PGraphics::square(float x,float y,float s)        { if(PApplet::g_papplet) PApplet::g_papplet->square(x,y,s); }
+inline void PGraphics::quad(float x1,float y1,float x2,float y2,float x3,float y3,float x4,float y4)
+                                                       { if(PApplet::g_papplet) PApplet::g_papplet->quad(x1,y1,x2,y2,x3,y3,x4,y4); }
+inline void PGraphics::arc(float cx,float cy,float w,float h,float sa,float ea)
+                                                       { if(PApplet::g_papplet) PApplet::g_papplet->arc(cx,cy,w,h,sa,ea); }
+inline void PGraphics::arc(float cx,float cy,float w,float h,float sa,float ea,int mode)
+                                                       { if(PApplet::g_papplet) PApplet::g_papplet->arc(cx,cy,w,h,sa,ea,mode); }
+inline void PGraphics::blendMode(int mode)                    { if(PApplet::g_papplet) PApplet::g_papplet->blendMode(mode); }
+inline void PGraphics::clip(float x,float y,float w,float h)  { if(PApplet::g_papplet) PApplet::g_papplet->clip(x,y,w,h); }
+inline void PGraphics::noClip()                               { if(PApplet::g_papplet) PApplet::g_papplet->noClip(); }
+inline void PGraphics::loadPixels()                           { if(PApplet::g_papplet) PApplet::g_papplet->loadPixels(); }
+inline void PGraphics::updatePixels()                         { if(PApplet::g_papplet) PApplet::g_papplet->updatePixels(); }
+inline color PGraphics::get(int x,int y)                      { return PApplet::g_papplet ? PApplet::g_papplet->get(x,y) : color(0); }
+inline void PGraphics::set(int x,int y,color c)               { if(PApplet::g_papplet) PApplet::g_papplet->set(x,y,c); }
 
 
 inline void link(const ::std::string& url) {
