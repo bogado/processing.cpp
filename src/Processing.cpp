@@ -706,7 +706,7 @@ void PApplet::setClipboard(const ::std::string& s) {
 // ---------------------------------------------------------------------------
 // Window icon
 // ---------------------------------------------------------------------------
-void PApplet::setWindowIcon(PImage* img) {
+void PApplet::setWindowIcon(const PImage* img) {
     if (!img || !gWindow) return;
     // Convert ARGB pixels (Processing internal) to RGBA (GLFW wants RGBA)
     ::std::vector<unsigned char> rgba(img->width * img->height * 4);
@@ -2713,7 +2713,7 @@ PGraphics* PApplet::createGraphics(int w,int h,int renderer){
 }
 
 // ── PImage::uploadTexture ────────────────────────────────────────────────────
-void PImage::uploadTexture() {
+void PImage::uploadTexture() const {
     if (width <= 0 || height <= 0 || pixels.empty()) return;
     if ((int)pixels.size() < width * height) return;
     ::std::vector<unsigned char> rgba((size_t)width * height * 4);
@@ -2737,7 +2737,7 @@ void PImage::uploadTexture() {
     dirty = false;
 }
 
-void PApplet::drawImageRect(PImage& img,float x,float y,float w,float h){
+void PApplet::drawImageRect(const PImage& img,float x,float y,float w,float h){
     if(img.width==0||img.height==0) return;
     if(img.dirty) img.uploadTexture();
     if(img.texID==0) return;
@@ -2773,7 +2773,7 @@ void PApplet::drawImageRect(PImage& img,float x,float y,float w,float h){
 // ── image() canonical implementation ─────────────────────────────────────────
 // Single entry point: everything goes through drawImage_impl.
 // Takes a raw PImage pointer so no reference/ABI issues across TUs.
-void PApplet::drawImage_impl(PImage* img, float x, float y, float w, float h) {
+void PApplet::drawImage_impl(const PImage* img, float x, float y, float w, float h) {
     if (!img || img->width == 0 || img->height == 0) return;
     // Apply imageMode to x,y,w,h
     float dx = x, dy = y, dw = w, dh = h;
@@ -2829,25 +2829,19 @@ void PApplet::drawPGraphicsRect(PGraphics& pg, float x, float y, float w, float 
 }
 void PApplet::image(PGraphics& pg, float x, float y){ drawPGraphicsRect(pg,x,y,(float)pg.width,(float)pg.height); }
 void PApplet::image(PGraphics& pg, float x, float y, float w, float h){ drawPGraphicsRect(pg,x,y,w,h); }
-void PApplet::image(PImage* img, float x, float y) {
-    if(!img || img->width==0 || img->height==0) return;
-    drawImage_impl(img, x, y, (float)img->width, (float)img->height);
-}
-void PApplet::image(PImage* img, float x, float y, float w, float h) {
-    if(!img || img->width==0 || img->height==0) return;
-    drawImage_impl(img, x, y, w, h);
-}
+void PApplet::image(const PImage& img, float x, float y, float w, float h){ drawImage_impl(&img, x, y, w, h); }
+
 // Nine-argument form: image(img, dx1,dy1,dx2,dy2, sx1,sy1,sx2,sy2)
-void PApplet::image(PImage* img, float dx1,float dy1,float dx2,float dy2,
+void PApplet::image(const PImage& img, float dx1,float dy1,float dx2,float dy2,
                                float sx1,float sy1,float sx2,float sy2) {
-    if(!img || img->width==0 || img->height==0) return;
-    if(img->dirty) img->uploadTexture();
-    if(img->texID==0) return;
+    if(img.width==0 || img.height==0) return;
+    if(img.dirty) img.uploadTexture();
+    if(img.texID==0) return;
     // Convert source pixel coords to UV [0,1]
-    float u1=sx1/img->width, v1=sy1/img->height;
-    float u2=sx2/img->width, v2=sy2/img->height;
+    float u1=sx1/img.width, v1=sy1/img.height;
+    float u2=sx2/img.width, v2=sy2/img.height;
     glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
-    glEnable(GL_TEXTURE_2D); glBindTexture(GL_TEXTURE_2D,img->texID);
+    glEnable(GL_TEXTURE_2D); glBindTexture(GL_TEXTURE_2D,img.texID);
     glColor4f(doTint?tintR:1.f,doTint?tintG:1.f,doTint?tintB:1.f,doTint?tintA:1.f);
     glBegin(GL_QUADS);
     glTexCoord2f(u1,v1); glVertex2f(dx1,dy1);

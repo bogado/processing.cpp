@@ -553,8 +553,9 @@ public:
     int  width  = 0;
     int  height = 0;
     ::std::vector<unsigned int> pixels;
-    GLuint texID = 0;
-    bool   dirty = false;
+
+    mutable GLuint texID = 0;
+    mutable bool   dirty = false;
 
     PImage() = default;
     PImage(int w, int h) {
@@ -578,14 +579,14 @@ public:
 
     // These mirror the Processing Java API; dirty flag is used by updatePixels()
     void loadPixels()   {}
-    void updatePixels() { dirty = true; }
+    void updatePixels() const { dirty = true; }
     bool isLoaded()  const { return width>0 && height>0; }
     int  getWidth()  const { return width; }
     int  getHeight() const { return height; }
     int  format      = 1; // RGB=1, ARGB=2, ALPHA=4
 
     // Upload CPU pixels to the GPU texture
-    void uploadTexture(); // defined in Processing.cpp
+    void uploadTexture() const; // defined in Processing.cpp
 
     void resize(int w, int h) { width=w; height=h; pixels.assign(static_cast<size_t>(w) * static_cast<size_t>(h), 0xFF000000u); dirty=true; }
 
@@ -986,9 +987,9 @@ public:
     void bezierVertex(float cx1,float cy1,float cz1,float cx2,float cy2,float cz2,float x,float y,float z);
     void curveVertex(float x, float y);
     void curveVertex(float x, float y, float z);
-    void image(PImage* img, float x, float y);
-    void image(PImage* img, float x, float y, float w, float h);
-    void image(PImage* img, float dx1,float dy1,float dx2,float dy2,float sx1,float sy1,float sx2,float sy2);
+    void image(const PImage* img, float x, float y);
+    void image(const PImage* img, float x, float y, float w, float h);
+    void image(const PImage* img, float dx1,float dy1,float dx2,float dy2,float sx1,float sy1,float sx2,float sy2);
     void tint(float gray);
     void tint(float gray, float a);
     void tint(float r, float g, float b, float a);
@@ -4358,7 +4359,7 @@ struct PApplet {
     void hint(int which);
     void cursor();
     void cursor(int type);
-    void cursor(PImage*, int=0, int=0) { cursor(); } // custom cursor stub
+    void cursor(const PImage*, int=0, int=0) { cursor(); } // custom cursor stub
     void noCursor();
     void captureMouse();
     void releaseMouse();
@@ -4367,7 +4368,7 @@ struct PApplet {
     void setResizable(bool r)           { windowResizable(r); }
     void setClipboard(const ::std::string& s);
     ::std::string getClipboard();
-    void setWindowIcon(PImage* img);
+    void setWindowIcon(const PImage* img);
     bool isCtrlDown();
     bool isShiftDown();
     bool isAltDown();
@@ -4666,11 +4667,9 @@ struct PApplet {
     PGraphics* createGraphics(int w, int h, int renderer); // matches size(w,h,renderer)
     PImage*    requestImage(const ::std::string& path);
     void imageMode(int mode);
-    void image(PImage* img, float x, float y);
-    void image(PImage* img, float x, float y, float w, float h);
-    void image(PImage* img, float dx1,float dy1,float dx2,float dy2,float sx1,float sy1,float sx2,float sy2);
-    void image(const PImage& img, float x, float y) { image(&const_cast<PImage&>(img), x, y); }
-    void image(const PImage& img, float x, float y, float w, float h) { image(&const_cast<PImage&>(img), x, y, w, h); }
+    void image(const PImage& img, float dx1,float dy1,float dx2,float dy2,float sx1,float sy1,float sx2,float sy2);
+    void image(const PImage& img, float x, float y) { image(img, x,y, img.width, img.height); }
+    void image(const PImage& img, float x, float y, float w, float h);
     void image(const PImage* img, float x, float y) { if(img) image(*img,x,y); }
     void image(const PImage* img, float x, float y, float w, float h) { if(img) image(*img,x,y,w,h); }
     void image(PGraphics& pg, float x, float y);
@@ -4991,8 +4990,8 @@ protected:
 #endif
     float getLineWidth(const ::std::string& line);
     void  renderText(const ::std::string& msg, float x, float y);
-    void  drawImageRect(PImage& img, float x, float y, float w, float h);
-    void  drawImage_impl(PImage* img, float x, float y, float w, float h);
+    void  drawImageRect(const PImage& img, float x, float y, float w, float h);
+    void  drawImage_impl(const PImage* img, float x, float y, float w, float h);
     void  drawPGraphicsRect(PGraphics& pg, float x, float y, float w, float h);
     void  drawPShape(const PShape& s, float x, float y, float w=-1, float h=-1, bool parentStyleEnabled=true);
     void  hsbToRgb(float h, float s, float b, float& outR, float& outG, float& outB);
